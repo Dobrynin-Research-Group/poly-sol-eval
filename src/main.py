@@ -2,7 +2,7 @@ from enum import Enum
 from pathlib import Path
 from uuid import uuid1
 
-from fastapi import FastAPI, UploadFile, WebSocket, WebSocketDisconnect, status
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, status
 import numpy as np
 from pydantic import BaseModel
 
@@ -13,8 +13,9 @@ from polysoleval.evaluate import evaluate_data, RepeatUnit
 # TODO: simplify/pydantic-ify enums into model urls
 MODELS_BASEPATH = Path("./models")
 TMP_BASEPATH = Path("./tmp")
-BASE_FILEPATH = Path("./files")
-BASE_FILEPATH.mkdir(exist_ok=True, parents=True)
+
+MODEL_FILE_PATTERN = r"(?<type>[\d\w]+)/(?<name>[\d\w]+)/(?<date>\d{8})\.pt"
+MODEL_LIST = list(MODELS_BASEPATH.glob("**/.pt"))
 
 app = FastAPI()
 
@@ -41,16 +42,6 @@ def get_tmpfile():
 @app.get("/")
 async def root():
     return {"message": "Hello World"}
-
-
-@app.get("/files/{filepath:path}")
-async def load_file(filepath: Path):
-    return {"contents": (BASE_FILEPATH / filepath).read_text()}
-
-
-@app.post("/upload_data/")
-async def upload_data(datafiles: list[UploadFile]):
-    return {"filenames": f.filename for f in datafiles}
 
 
 @app.get("/models/")
@@ -105,35 +96,3 @@ async def websocket_endpoint(websocket: WebSocket):
         await websocket.close()
     except WebSocketDisconnect:
         return {"error": "disconnected"}
-
-
-@app.post("/process_data/")
-async def process_data(
-    model_path: str,
-    repeat_unit_mass: float,
-    repeat_unit_length: float,
-    datafile: UploadFile,
-):
-    conc, mw, spec_visc = np.genfromtxt(
-        datafile.file,
-        delimiter=",",
-        missing_values="",
-        filling_values=np.nan,
-    )
-    result = evaluate_data(
-        MODELS_BASEPATH / model_path,
-        conc,
-        mw,
-        spec_visc,
-        RepeatUnit(repeat_unit_mass, repeat_unit_length),
-    )
-    return {
-        "bg": result.bg,
-        "bth": result.bth,
-        "pe_bg_bth": result.pe_combo.opt,
-        "pe_bg_bth_variance": result.pe_combo.var,
-        "pe_bg": result.pe_bg_only.opt,
-        "pe_bg_variance": result.pe_bg_only.var,
-        "pe_bth": result.pe_bth_only.opt,
-        "pe_bth_variance": result.pe_bth_only.var,
-    }
