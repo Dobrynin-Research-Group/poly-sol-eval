@@ -98,16 +98,14 @@ def process_data_to_grid(
           index ``(i, j)`` approximately corresponds to the reduced concentration at
           index ``i`` and the DP at index ``j``.
     """
-    assert phi_range.num is not None
-    assert nw_range.num is not None
-
-    visc_out = np.zeros((phi_range.num, nw_range.num))
-    counts = np.zeros((phi_range.num, nw_range.num), dtype=np.uint32)
+    shape = np.broadcast_shapes(phi_range.shape, nw_range.shape)
+    visc_out = np.zeros(shape)
+    counts = np.zeros(shape, dtype=np.uint32)
 
     log_phi_bins: np.ndarray = np.linspace(
         np.log10(phi_range.min_value),
         np.log10(phi_range.max_value),
-        phi_range.num,
+        shape[0],
         endpoint=True,
     )
     phi_bin_edges = np.zeros(log_phi_bins.shape[0] + 1)
@@ -118,7 +116,7 @@ def process_data_to_grid(
     log_nw_bins: np.ndarray = np.linspace(
         np.log10(nw_range.min_value),
         np.log10(nw_range.max_value),
-        nw_range.num,
+        shape[1],
         endpoint=True,
     )
     nw_bin_edges = np.zeros(log_nw_bins.shape[0] + 1)
@@ -155,9 +153,9 @@ def init_parameters(
           one-element ``psst.NormedTensor``s for ``bg``, ``bth``, and ``pe``
           (initially set to 0.0).
     """
-    assert bg_range.num is not None
-    assert bth_range.num is not None
-    assert pe_range.num is not None
+    assert bg_range.shape is not None
+    assert bth_range.shape is not None
+    assert pe_range.shape is not None
 
     bg = psst.NormedTensor.create(
         1,
@@ -187,7 +185,7 @@ def transform_data(
     phi_range: psst.Range,
     nw_range: psst.Range,
     visc_range: psst.Range,
-) -> tuple[psst.NormedTensor, psst.NormedTensor]:
+) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Transform the raw, reduced data into two 2D arrays of reduced, normalized
     viscosity data ready for use in a neural network.
 
@@ -247,8 +245,8 @@ def inference_models(
     model_type: str,
     bg_state_dict: dict,
     bth_state_dict: dict,
-    visc_normed_bg: psst.NormedTensor,
-    visc_normed_bth: psst.NormedTensor,
+    visc_normed_bg: torch.Tensor,
+    visc_normed_bth: torch.Tensor,
     bg_range: psst.Range,
     bth_range: psst.Range,
 ) -> tuple[float, float]:
@@ -278,8 +276,8 @@ def inference_models(
     bg_model.load_state_dict(bg_state_dict)
     bth_model.load_state_dict(bth_state_dict)
 
-    assert bg_range.num is not None
-    assert bth_range.num is not None
+    assert bg_range.shape is not None
+    assert bth_range.shape is not None
 
     bg = psst.NormedTensor.create(
         1,
