@@ -49,7 +49,7 @@ class ModelData(BaseData):
     id: orm.Mapped[int] = orm.mapped_column(primary_key=True, index=True)
     name: orm.Mapped[str] = orm.mapped_column(unique=True)
     filepath: orm.Mapped[str]
-    states: orm.Mapped[list["StateData"]] = orm.relationship(back_populates="model")
+    # states: orm.Mapped[list["StateData"]] = orm.relationship(back_populates="model")
 
 
 class RangeData(BaseData):
@@ -57,7 +57,7 @@ class RangeData(BaseData):
 
     id: orm.Mapped[int] = orm.mapped_column(primary_key=True, index=True)
     name: orm.Mapped[str] = orm.mapped_column(unique=True)
-    states: orm.Mapped[list["StateData"]] = orm.relationship(back_populates="range")
+    # states: orm.Mapped[list["StateData"]] = orm.relationship(back_populates="range")
 
     # Mapped[Range] is incorrect
     phi_range: orm.Mapped[RangeCols] = orm.composite(
@@ -98,17 +98,17 @@ class RangeData(BaseData):
     )
 
 
-class StateData(BaseData):
-    __tablename__ = "states"
+# class StateData(BaseData):
+#     __tablename__ = "states"
 
-    id: orm.Mapped[int] = orm.mapped_column(primary_key=True, index=True)
-    filepath: orm.Mapped[str]
-    num_epochs: orm.Mapped[int]
-    creation_date: orm.Mapped[date]
-    range_id: orm.Mapped[int] = orm.mapped_column(sqla.ForeignKey("ranges.id"))
-    range: orm.Mapped["RangeData"] = orm.relationship(back_populates="states")
-    model_id: orm.Mapped[int] = orm.mapped_column(sqla.ForeignKey("models.id"))
-    model: orm.Mapped["ModelData"] = orm.relationship(back_populates="states")
+#     id: orm.Mapped[int] = orm.mapped_column(primary_key=True, index=True)
+#     filepath: orm.Mapped[str]
+#     num_epochs: orm.Mapped[int]
+#     creation_date: orm.Mapped[date]
+#     range_id: orm.Mapped[int] = orm.mapped_column(sqla.ForeignKey("ranges.id"))
+#     range: orm.Mapped["RangeData"] = orm.relationship(back_populates="states")
+#     model_id: orm.Mapped[int] = orm.mapped_column(sqla.ForeignKey("models.id"))
+#     model: orm.Mapped["ModelData"] = orm.relationship(back_populates="states")
 
 
 def add_model(db: orm.Session, name: str, filepath: str):
@@ -137,26 +137,26 @@ def add_range(
     return range_
 
 
-def add_state(
-    db: orm.Session,
-    creation_date: date,
-    filepath: str,
-    num_epochs: int,
-    range_name: str,
-    model_name: str,
-):
-    range_id = db.scalar(sqla.select(RangeData.id).filter_by(name=range_name))
-    model_id = db.scalar(sqla.select(ModelData.id).filter_by(name=model_name))
-    state = StateData(
-        creation_date=creation_date,
-        filepath=filepath,
-        range_id=range_id,
-        model_id=model_id,
-        num_epochs=num_epochs,
-    )
-    db.add(state)
-    db.commit()
-    return state
+# def add_state(
+#     db: orm.Session,
+#     creation_date: date,
+#     filepath: str,
+#     num_epochs: int,
+#     range_name: str,
+#     model_name: str,
+# ):
+#     range_id = db.scalar(sqla.select(RangeData.id).filter_by(name=range_name))
+#     model_id = db.scalar(sqla.select(ModelData.id).filter_by(name=model_name))
+#     state = StateData(
+#         creation_date=creation_date,
+#         filepath=filepath,
+#         range_id=range_id,
+#         model_id=model_id,
+#         num_epochs=num_epochs,
+#     )
+#     db.add(state)
+#     db.commit()
+#     return state
 
 
 def get_model_names(db: orm.Session):
@@ -189,23 +189,23 @@ def get_range(db: orm.Session, idx: int | None = None, name: str | None = None):
     return db.scalars(sel).one_or_none()
 
 
-def get_state_list(
-    db: orm.Session, model_name: str | None = None, range_name: str | None = None
-):
-    statement = sqla.select(StateData)
-    if model_name:
-        model = get_model(db, name=model_name)
-        if model is None:
-            return list()
-        statement = statement.where(StateData.model_id == model.id)
-    if range_name:
-        range_ = get_range(db, name=range_name)
-        if range_ is None:
-            return list()
-        statement = statement.where(StateData.range_id == range_.id)
-    return db.scalars(statement).all()
+# def get_state_list(
+#     db: orm.Session, model_name: str | None = None, range_name: str | None = None
+# ):
+#     statement = sqla.select(StateData)
+#     if model_name:
+#         model = get_model(db, name=model_name)
+#         if model is None:
+#             return list()
+#         statement = statement.where(StateData.model_id == model.id)
+#     if range_name:
+#         range_ = get_range(db, name=range_name)
+#         if range_ is None:
+#             return list()
+#         statement = statement.where(StateData.range_id == range_.id)
+#     return db.scalars(statement).all()
 
 
-def get_state(db: orm.Session, idx: int):
-    statement = sqla.select(StateData).where(StateData.id == idx)
-    return db.scalar(statement)
+# def get_state(db: orm.Session, idx: int):
+#     statement = sqla.select(StateData).where(StateData.id == idx)
+#     return db.scalar(statement)
