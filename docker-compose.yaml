@@ -1,0 +1,37 @@
+services:
+  modeldb:
+    image: mariadb
+    restart: always
+    environment:
+      MARIADB_ROOT_PASSWORD_FILE: /run/secrets/modeldb_password
+      MARIADB_DATABASE: modeldb
+    networks:
+      - psstnet
+    secrets:
+      - modeldb_password
+  web:
+    build: .
+    restart: always
+    working_dir: /code
+    networks:
+      - psstnet
+    ports:
+      - "80:80"
+    depends_on:
+      - modeldb
+    environment:
+      modeldb_root_password_file: /run/secrets/modeldb_password
+      modelpath: models_test
+      rangepath: psst/ranges
+      tmppath: tmp
+    secrets:
+      - modeldb_password
+    command: ["uvicorn", "polysoleval.main:app", "--port", "80", "--host", "0.0.0.0"]
+
+networks:
+  psstnet:
+    driver: bridge
+
+secrets:
+  modeldb_password: 
+    file: ./secrets/modeldb_password
