@@ -1,0 +1,4 @@
+[submodule "PSST"]
+	path = PSST
+	url = https://github.com/Dobrynin-Research-Group/PSST
+	branch = jacobs-separate-structures
