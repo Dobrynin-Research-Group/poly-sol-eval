@@ -1,0 +1,11 @@
+.gitignore
+__pycache__
+.pytest_cache
+.venv
+.vscode
+test
+Dockerfile
+docker-compose.yaml
+README.md
+TODO.md
+secrets
