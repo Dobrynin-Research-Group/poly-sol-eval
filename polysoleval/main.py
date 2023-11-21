@@ -10,22 +10,23 @@ from pydantic import BaseModel
 import torch
 
 import psst
-from psst import models, evaluation
-from . import modeldb
+from . import modeldb, evaluate
 
 
 # TODO: correct error codes
 # TODO: simplify/pydantic-ify enums into model urls
 # TODO: output OpenAPI documentation to yaml
-MODELS_BASEPATH = Path(environ["modelpath"])
-RANGES_BASEPATH = Path(environ["rangepath"])
-TMP_BASEPATH = Path(environ["tmppath"])
+MODELPATH = Path(environ["modelpath"])
+RANGEPATH = Path(environ["rangepath"])
+TMPPATH = Path(environ["tmppath"])
 DB_PASSWORD_FILE = Path(environ["modeldb_root_password_file"])
 DB_PASSWORD = DB_PASSWORD_FILE.read_text().strip()
 
-DB = modeldb.start_session(DB_PASSWORD, MODELS_BASEPATH, RANGES_BASEPATH, update=True)
+DB = modeldb.start_session(DB_PASSWORD, MODELPATH, RANGEPATH, update=True)
 
-ML_MODELS: dict[tuple[str, str], tuple[torch.nn.Module, torch.nn.Module]] = dict()
+model_range_spec = tuple[str, str]
+bg_bth_models = tuple[Optional[torch.nn.Module], Optional[torch.nn.Module]]
+ML_MODELS: dict[model_range_spec, bg_bth_models] = dict()
 
 
 @asynccontextmanager
@@ -33,17 +34,19 @@ async def lifespan(app: FastAPI):
     # load ML models
     for model_ in modeldb.get_models(DB):
         model_name = model_.name
-        Model: type[torch.nn.Module] | None = getattr(models, model_name, None)
-        if Model is None:
-            continue
-        bg_model = Model()
-        bth_model = Model()
+        bg_model = None
+        bth_model = None
 
         for range_ in modeldb.get_ranges(DB):
-            model_file = MODELS_BASEPATH / model_name / (range_.name + ".pt")
-            d = torch.load(model_file)
-            bg_model.load_state_dict(d["bg_model"])
-            bth_model.load_state_dict(d["bth_model"])
+            bg_file = MODELPATH / f"{model_name}-{range_.name}-Bg.pt"
+            if bg_file.is_file():
+                bg_model = torch.jit.load(bg_file)
+                bg_model.eval()
+
+            bth_file = MODELPATH / f"{model_name}-{range_.name}-Bth.pt"
+            if bth_file.is_file():
+                bth_model = torch.jit.load(bth_file)
+                bth_model.eval()
 
             ML_MODELS[(model_name, range_.name)] = (bg_model, bth_model)
 
@@ -56,11 +59,11 @@ app = FastAPI(lifespan=lifespan)
 
 
 def phi_to_conc(phi: float, rep_unit_len: float):
-    return phi / rep_unit_len**3 / evaluation.AVOGADRO_CONSTANT * 1e24
+    return phi / rep_unit_len**3 / evaluate.AVOGADRO_CONSTANT * 1e24
 
 
 def conc_to_phi(conc: float, rep_unit_len: float):
-    return conc * rep_unit_len**3 * evaluation.AVOGADRO_CONSTANT / 1e24
+    return conc * rep_unit_len**3 * evaluate.AVOGADRO_CONSTANT / 1e24
 
 
 class Parameters(BaseModel):
@@ -97,16 +100,16 @@ class RangeResponse(BaseModel):
 
 
 class EvaluationResult(BaseModel):
-    bg: Optional[float]
-    bth: Optional[float]
-    pe: float
-    pe_variance: Optional[float]
-    kuhn_length: float
-    thermal_blob_size: Optional[float]
-    dp_of_thermal_blob: Optional[float]
-    excluded_volume: Optional[float]
-    thermal_blob_conc: Optional[float]
-    concentrated_conc: float
+    bg: Optional[float] = None
+    bth: Optional[float] = None
+    pe: float = 0.0
+    pe_variance: Optional[float] = None
+    kuhn_length: float = 0.0
+    thermal_blob_size: Optional[float] = None
+    dp_of_thermal_blob: Optional[float] = None
+    excluded_volume: Optional[float] = None
+    thermal_blob_conc: Optional[float] = None
+    concentrated_conc: float = 0.0
 
     @classmethod
     def create(
@@ -279,6 +282,8 @@ async def post_evaluate(
     # Set up models and config
     try:
         bg_model, bth_model = ML_MODELS[(ml_model_name, range_name)]
+        if bg_model is None or bth_model is None:
+            raise ValueError("Model not loaded!")
     except KeyError as ke:
         print(ML_MODELS)
         raise ke
@@ -291,10 +296,10 @@ async def post_evaluate(
         pe_range=asdict(range_.pe_range),
     )
 
-    repeat_unit = evaluation.RepeatUnit(length, mass)
+    repeat_unit = evaluate.RepeatUnit(length, mass)
 
     # Do evaluation (two inferences and one curve fit)
-    result = evaluation.evaluate_dataset(
+    result = evaluate.evaluate_dataset(
         conc,
         mw,
         visc,
@@ -312,8 +317,8 @@ async def post_evaluate(
         rep_unit_length=length,
     )
     bth_only_result = EvaluationResult.create(
-        bth=result.bth,
         bg=None,
+        bth=result.bth,
         pe=result.pe_bth_only.opt,
         pe_variance=result.pe_bth_only.var,
         rep_unit_length=length,
