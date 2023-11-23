@@ -171,46 +171,12 @@ async def root():
 
 @app.get("/models")
 async def get_models():
-    return [
-        ModelResponse(name=model.name, description=model.description)
-        for model in modeldb.get_models(DB)
-    ]
+    return MODELS
 
 
 @app.get("/ranges")
 async def get_ranges():
-    return [
-        RangeResponse(
-            name=db_range.name,
-            phi_res=db_range.num_phi,
-            nw_res=db_range.num_nw,
-            phi_range=BasicRange(
-                min_value=db_range.phi_range.min_value,
-                max_value=db_range.phi_range.max_value,
-            ),
-            nw_range=BasicRange(
-                min_value=db_range.nw_range.min_value,
-                max_value=db_range.nw_range.max_value,
-            ),
-            visc_range=BasicRange(
-                min_value=db_range.visc_range.min_value,
-                max_value=db_range.visc_range.max_value,
-            ),
-            bg_range=BasicRange(
-                min_value=db_range.bg_range.min_value,
-                max_value=db_range.bg_range.max_value,
-            ),
-            bth_range=BasicRange(
-                min_value=db_range.bth_range.min_value,
-                max_value=db_range.bth_range.max_value,
-            ),
-            pe_range=BasicRange(
-                min_value=db_range.pe_range.min_value,
-                max_value=db_range.pe_range.max_value,
-            ),
-        )
-        for db_range in modeldb.get_ranges(DB)
-    ]
+    return RANGES
 
 
 @app.post("/new-parameters")
@@ -238,16 +204,41 @@ async def post_evaluate(
     datafile: UploadFile,
 ):
     # Validate first
-    model = modeldb.get_model(DB, name=ml_model_name)
-    if model is None:
+    bg_model, bth_model = ML_MODELS.get((ml_model_name, range_name), (None, None))
+    if bg_model is None or bth_model is None:
+        model_exists = False
+        for m in MODELS:
+            if m.name == ml_model_name:
+                model_exists = True
+                break
+        if not model_exists:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, detail="Unrecognized model name"
+            )
+
+        range_exists = False
+        for r in RANGES:
+            if r.name == range_name:
+                range_exists = True
+                break
+        if not range_exists:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, detail="Unrecognized range name"
+            )
+
         raise HTTPException(
-            status.HTTP_404_NOT_FOUND, detail=f"model {ml_model_name} not found"
+            status.HTTP_400_BAD_REQUEST,
+            detail="Unsupported pair of model and range names",
         )
 
-    range_ = modeldb.get_range(DB, name=range_name)
-    if range_ is None:
+    range_response = None
+    for r in RANGES:
+        if r.name == range_name:
+            range_response = r
+            break
+    if range_response is None:
         raise HTTPException(
-            status.HTTP_404_NOT_FOUND, detail=f"range {range_name} not found"
+            status.HTTP_400_BAD_REQUEST, detail="Unrecognized range name"
         )
 
     try:
@@ -262,45 +253,18 @@ async def post_evaluate(
     except Exception as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, e.args[0]) from e
 
-    if data.shape[0] != 3:
-        raise HTTPException(
-            status.HTTP_406_NOT_ACCEPTABLE,
-            detail="invalid number of columns in datafile:"
-            f" expected 3, found {data.shape[1]}",
-        )
-
-    bad_data = np.logical_or(np.isnan(data), data <= 0)
-    if np.any(bad_data):
-        first_row = np.where(bad_data)[0][0]
-        raise HTTPException(
-            status.HTTP_406_NOT_ACCEPTABLE,
-            detail=f"invalid data in datafile, row {first_row}",
-        )
-
-    conc, mw, visc = data
-
-    # Set up models and config
-    try:
-        bg_model, bth_model = ML_MODELS[(ml_model_name, range_name)]
-        if bg_model is None or bth_model is None:
-            raise KeyError("Model not loaded!")
-    except KeyError as ke:
-        print(ML_MODELS)
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            detail=f"invalid model name: {ke.args}",
-        )
-    phi_range = asdict(range_.phi_range)
-    phi_range["shape"] = range_.num_phi
-    nw_range = asdict(range_.nw_range)
-    nw_range["shape"] = range_.num_nw
+    # Set up config
+    phi_range = range_response.phi_range.model_dump()
+    phi_range["shape"] = range_response.phi_res
+    nw_range = range_response.nw_range.model_dump()
+    nw_range["shape"] = range_response.nw_res
     range_config = psst.RangeConfig(
         phi_range=phi_range,
         nw_range=nw_range,
-        visc_range=asdict(range_.visc_range),
-        bg_range=asdict(range_.bg_range),
-        bth_range=asdict(range_.bth_range),
-        pe_range=asdict(range_.pe_range),
+        visc_range=range_response.visc_range.model_dump(),
+        bg_range=range_response.bg_range.model_dump(),
+        bth_range=range_response.bth_range.model_dump(),
+        pe_range=range_response.pe_range.model_dump(),
     )
 
     repeat_unit = evaluate.RepeatUnit(length, mass)
