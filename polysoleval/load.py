@@ -5,7 +5,7 @@ from typing import Any, Optional
 from ruamel.yaml import YAML
 import torch
 
-from .responses import ModelResponse, BasicRange, RangeResponse
+from .responses import ModelResponse, RangeResponse
 
 
 __all__ = [
@@ -36,25 +36,6 @@ def load_range_from_yaml(filepath: Path) -> RangeResponse:
     range_dict["name"] = filepath.stem
     range_dict["phi_res"] = range_dict["phi_range"].pop("shape")
     range_dict["nw_res"] = range_dict["nw_range"].pop("shape")
-
-    range_dict["phi_range"] = BasicRange.model_validate_json(
-        json.dumps(range_dict["phi_range"])
-    )
-    range_dict["nw_range"] = BasicRange.model_validate_json(
-        json.dumps(range_dict["nw_range"])
-    )
-    range_dict["visc_range"] = BasicRange.model_validate_json(
-        json.dumps(range_dict["visc_range"])
-    )
-    range_dict["bg_range"] = BasicRange.model_validate_json(
-        json.dumps(range_dict["bg_range"])
-    )
-    range_dict["bth_range"] = BasicRange.model_validate_json(
-        json.dumps(range_dict["bth_range"])
-    )
-    range_dict["pe_range"] = BasicRange.model_validate_json(
-        json.dumps(range_dict["pe_range"])
-    )
 
     return RangeResponse.model_validate_json(json.dumps(range_dict))
 
