@@ -1,400 +1,57 @@
-from __future__ import annotations
-import asyncio
-from typing import NamedTuple
+from typing import Optional
 
-import numpy as np
 import numpy.typing as npt
 import torch
-from scipy.optimize import curve_fit
 
-import psst
-from .responses import BasicRange, RangeResponse
-
-
-__all__ = [
-    "AVOGADRO_CONSTANT",
-    "GOOD_EXP",
-    "process_data_to_grid",
-    "transform_data_to_grid",
-    "fit_func",
-    "evaluate_dataset",
-    "RepeatUnit",
-    "PeResult",
-    "InferenceResult",
-]
+from polysoleval.responses import RangeResponse, EvaluationResponse, EvaluationResult
+from polysoleval.analysis.fitting import do_fits
+from polysoleval.analysis.inference import do_inferences
+from polysoleval.analysis.preprocess import *
 
 
-class Resolution(NamedTuple):
-    phi: int
-    nw: int
+def create_result(
+    *,
+    bg: Optional[float],
+    bth: Optional[float],
+    pe: float,
+    pe_variance: Optional[float],
+    rep_unit_length: float,
+) -> EvaluationResult:
+    thermal_blob_size = None
+    dp_of_thermal_blob = None
+    excluded_volume = None
+    thermal_blob_conc = None
+    concentrated_conc = None
 
-
-class RepeatUnit(NamedTuple):
-    """Details of the repeat unit. Mass in units of g/mol, projection length (along
-    fully extended axis) in nm (:math:`10^{-9}` m).
-    """
-
-    length: float
-    mass: float
-
-
-class PeResult(NamedTuple):
-    """The optimized value of :math:`P_e` and the variance of that value from the
-    fitting function.
-    """
-
-    opt: float
-    var: float
-
-
-class InferenceResult(NamedTuple):
-    bg: float
-    bth: float
-    pe_combo: PeResult
-    pe_bg_only: PeResult
-    pe_bth_only: PeResult
-    reduced_conc: np.ndarray
-    degree_polym: np.ndarray
-    specific_visc: np.ndarray
-
-
-AVOGADRO_CONSTANT = 6.0221408e23
-GOOD_EXP = 0.588
-
-
-def reduce_data(
-    conc: np.ndarray,
-    mol_weight: np.ndarray,
-    repeat_unit: RepeatUnit,
-) -> tuple[np.ndarray, np.ndarray]:
-    """Reduce the concentration and molecular weight measurements from concentration
-    in g/L to :math:`(c*l^3)` and weight-average molecular weight in kg/mol to weight-
-    average degree of polymerization (number of repeat units per chain).
-
-    Args:
-        conc (np.ndarray): Concentration in g/L.
-        mol_weight (np.ndarray): Weight-average molecular weight in kg/mol.
-        repeat_unit (RepeatUnit): The mass in g/mol and length in nm of a repeat unit.
-
-    Returns:
-        tuple[np.ndarray, np.ndarray]: The reduced concentration :math:`cl^3` and
-          degree of polymerization :math:`N_w`.
-    """
-
-    reduced_conc = AVOGADRO_CONSTANT * conc * (repeat_unit.length / 1e8) ** 3
-    degree_polym = mol_weight / repeat_unit.mass * 1e3
-
-    return reduced_conc, degree_polym
-
-
-# TODO: allow for linear spacing on phi and nw
-def process_data_to_grid(
-    phi_data: np.ndarray,
-    nw_data: np.ndarray,
-    visc_data: np.ndarray,
-    res: Resolution,
-    phi_range: BasicRange,
-    nw_range: BasicRange,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Transform a set of data ``(phi, nw, visc)`` into an "image", where each "pixel"
-    along axis 0 represents a bin of values in the log-scale of ``phi_range`` and those
-    along axis 1 represent bins of values in the log-scale of ``nw_range``.
-
-    Args:
-        phi (np.ndarray): Experimental concentration data in reduced form :math:`cl^3`.
-        nw (np.ndarray): Experimental data for weight-average degree of polymerization.
-        visc (np.ndarray): Experimental specific viscosity data. Data at index ``i``
-          should correspond to a solution state with reduced concentration ``phi[i]``
-          and weight-average DP of polymer chains ``nw[i]``.
-        phi_range (psst.Range): The minimum, maximum, and number of values in the range
-          of reduced concentration values (``phi_range.log_scale`` should be True).
-        nw_range (psst.Range): The minimum, maximum, and number of values in the range
-          of weight-average DP values (``nw_range.log_scale`` should be True).
-
-    Returns:
-        tuple[np.ndarray, np.ndarray, np.ndarray]: Three arrays representing the
-          concentration value of each "pixel" along axis 0 (1D), the DP value of each
-          "pixel" along axis 1 (1D), and the average values of specific viscosity at
-          the given concentrations and DPs (2D). Simply put, the value of viscosity at
-          index ``(i, j)`` approximately corresponds to the reduced concentration at
-          index ``i`` and the DP at index ``j``.
-    """
-    shape = (res.phi, res.nw)
-    visc_out = np.zeros(shape)
-    counts = np.zeros(shape, dtype=np.uint32)
-
-    log_phi_bins: np.ndarray = np.linspace(
-        np.log10(phi_range.min_value),
-        np.log10(phi_range.max_value),
-        shape[0],
-        endpoint=True,
-    )
-    phi_bin_edges = np.zeros(log_phi_bins.shape[0] + 1)
-    phi_bin_edges[[0, -1]] = 10 ** log_phi_bins[[0, -1]]
-    phi_bin_edges[1:-1] = 10 ** ((log_phi_bins[1:] + log_phi_bins[:-1]) / 2)
-    phi_indices = np.digitize(phi_data, phi_bin_edges)
-    phi_indices = np.minimum(
-        phi_indices, np.zeros_like(phi_indices) + phi_indices.shape[0] - 1
+    if bg and bth:
+        kuhn_length = rep_unit_length / bth**2
+        phi_th = bth**3 * (bth / bg) ** (1 / (2 * GOOD_EXP - 1))
+        thermal_blob_size = rep_unit_length * bth**2 / phi_th
+        dp_of_thermal_blob = (bth**3 / phi_th) ** 2
+        thermal_blob_conc = phi_to_conc(phi_th, rep_unit_length)
+        excluded_volume = phi_th * kuhn_length**3
+    elif bg:
+        kuhn_length = rep_unit_length / bg ** (1 / (1 - GOOD_EXP))
+    elif bth:
+        kuhn_length = rep_unit_length / bth**2
+    else:
+        raise ValueError("must supply at least one of bg or bth")
+    concentrated_conc = phi_to_conc(
+        1 / kuhn_length**2 / rep_unit_length, rep_unit_length
     )
 
-    log_nw_bins: np.ndarray = np.linspace(
-        np.log10(nw_range.min_value),
-        np.log10(nw_range.max_value),
-        shape[1],
-        endpoint=True,
+    return EvaluationResult(
+        bg=bg,
+        bth=bth,
+        pe=pe,
+        pe_variance=pe_variance,
+        kuhn_length=kuhn_length,
+        thermal_blob_size=thermal_blob_size,
+        excluded_volume=excluded_volume,
+        dp_of_thermal_blob=dp_of_thermal_blob,
+        thermal_blob_conc=thermal_blob_conc,
+        concentrated_conc=concentrated_conc,
     )
-    nw_bin_edges = np.zeros(log_nw_bins.shape[0] + 1)
-    nw_bin_edges[[0, -1]] = 10 ** log_nw_bins[[0, -1]]
-    nw_bin_edges[1:-1] = 10 ** ((log_nw_bins[1:] + log_nw_bins[:-1]) / 2)
-    nw_indices = np.digitize(nw_data, nw_bin_edges)
-    nw_indices = np.minimum(
-        nw_indices, np.zeros_like(nw_indices) + nw_indices.shape[0] - 1
-    )
-
-    for p, n, v in zip(phi_indices, nw_indices, visc_data):
-        visc_out[p, n] += v
-        counts[p, n] += 1
-
-    counts = np.maximum(counts, np.ones_like(counts))
-    visc_out /= counts
-
-    return 10**log_phi_bins, 10**log_nw_bins, visc_out
-
-
-def transform_data_to_grid(
-    reduced_conc: np.ndarray,
-    degree_polym: np.ndarray,
-    spec_visc: np.ndarray,
-    res: Resolution,
-    phi_range: BasicRange,
-    nw_range: BasicRange,
-    visc_range: BasicRange,
-) -> tuple[torch.Tensor, torch.Tensor]:
-    r"""Transform the raw, reduced data into two 2D tensors of reduced, normalized
-    viscosity data ready for use in a neural network.
-
-    Args:
-        reduced_conc (np.ndarray): Reduced concentration data :math:`\varphi=cl^3`.
-        degree_polym (np.ndarray): Weight-average DP data :math:`N_w`.
-        spec_visc (np.ndarray): Specific viscosity raw data
-        phi_range (psst.Range): Range of values specifying the value of reduced
-          concentration for each grid index along axis 0.
-        nw_range (psst.Range): Range of values specifying the value of weight-average
-          DP for each grid index along axis 1.
-        visc_range (psst.Range): Range of values specifying the maximum and minimum
-          values of specific viscosity.
-
-    Returns:
-        tuple[psst.NormedTensor, psst.NormedTensor]: The reduced specific viscosities
-          :math:`\eta_{sp}/N_w \phi^{1.31}` and :math:`\eta_{sp}/N_w \phi^2`.
-    """
-    phi_arr, nw_arr, visc_arr = process_data_to_grid(
-        reduced_conc,
-        degree_polym,
-        spec_visc,
-        res,
-        phi_range,
-        nw_range,
-    )
-
-    bg_denom = nw_arr.reshape(1, -1) * phi_arr.reshape(-1, 1) ** (
-        1 / (3 * GOOD_EXP - 1)
-    )
-    bth_denom = nw_arr.reshape(1, -1) * phi_arr.reshape(-1, 1) ** 2
-
-    visc_normed_bg_range = psst.Range(
-        min_value=visc_range.min_value / bg_denom.max(),
-        max_value=visc_range.max_value / bg_denom.min(),
-        log_scale=visc_range.log_scale,
-    )
-    visc_normed_bth_range = psst.Range(
-        min_value=visc_range.min_value / bth_denom.max(),
-        max_value=visc_range.max_value / bth_denom.min(),
-        log_scale=visc_range.log_scale,
-    )
-
-    visc_normed_bg = torch.as_tensor(visc_arr / bg_denom, dtype=torch.float32)
-    visc_normed_bg_range.normalize(visc_normed_bg)
-    visc_normed_bg.clamp_(0, 1)
-
-    visc_normed_bth = torch.as_tensor(visc_arr / bth_denom, dtype=torch.float32)
-    visc_normed_bth_range.normalize(visc_normed_bth)
-    visc_normed_bth.clamp_(0, 1)
-
-    return visc_normed_bg, visc_normed_bth
-
-
-async def inference_model(
-    model: torch.nn.Module,
-    visc_normed: torch.Tensor,
-    b_range: psst.Range,
-) -> float:
-    """Run the processed viscosity data through a pre-trained model to gain the
-    inference results for either :math:`B_g` or :math:`B_{th}`.
-
-    Args:
-        model (torch.nn.Module): The pre-trained deep learning model.
-        visc_normed (torch.Tensor): The normalized viscosity, appropriate to the
-          parameter to be evaluated.
-        b_range (psst.Range): The Range of the parameter to be evaluated.
-
-    Returns:
-        float: The inferred value of the parameter.
-    """
-    with torch.no_grad():
-        pred: torch.Tensor = model(visc_normed.unsqueeze_(0))
-
-    b_range.unnormalize(pred)
-
-    return pred.squeeze().item()
-
-
-def fit_func(nw_over_g_lamda_g: np.ndarray, pe: float) -> np.ndarray:
-    return nw_over_g_lamda_g * (1 + (nw_over_g_lamda_g / pe**2)) ** 2
-
-
-def fit_func_jac(nw_over_g_lamda_g: np.ndarray, pe: float) -> np.ndarray:
-    # pe_arr = np.array([pe]).reshape(1, 1)
-    nw_over_g_lamda_g = nw_over_g_lamda_g.reshape(-1, 1)
-    return -2 * nw_over_g_lamda_g**2 / pe**3 - 4 * nw_over_g_lamda_g**3 / pe**5
-
-
-async def fit_pe_combo(
-    bg: float,
-    bth: float,
-    phi: np.ndarray,
-    nw: np.ndarray,
-    spec_visc: np.ndarray,
-) -> PeResult:
-    # ne/pe**2 == g*lam_g
-    ne_over_pe2 = np.minimum(
-        bg ** (0.056 / 0.528 / 0.764) * bth ** (0.944 / 0.528) * phi ** (-1 / 0.764),
-        np.minimum(bth**2 / phi ** (4 / 3), bth**6 / phi**2),
-    )
-    lamda = np.minimum(1, bth**4 / phi)
-
-    popt, pcov = curve_fit(
-        fit_func,
-        nw / ne_over_pe2,
-        lamda * spec_visc,
-        p0=(8.0,),
-        bounds=(2.0, 40.0),
-        jac=fit_func_jac,
-    )
-
-    return PeResult(popt[0], pcov[0][0])
-
-
-async def fit_pe_bg_only(
-    bg: float,
-    phi: np.ndarray,
-    nw: np.ndarray,
-    spec_visc: np.ndarray,
-) -> PeResult:
-    g = (bg**3 / phi) ** (1 / 0.764)
-    lamda = np.minimum(1, phi ** (-0.236 / 0.764) * bg ** (2 / (0.412 * 0.764)))
-    popt, pcov = curve_fit(
-        fit_func,
-        nw / g,
-        lamda * spec_visc,
-        p0=(8.0,),
-        bounds=(2.0, 40.0),
-        jac=fit_func_jac,
-    )
-
-    return PeResult(popt[0], pcov[0][0])
-
-
-async def fit_pe_bth_only(
-    bth: float,
-    phi: np.ndarray,
-    nw: np.ndarray,
-    spec_visc: np.ndarray,
-) -> PeResult:
-    # ne/pe**2 == g*lam_g
-    ne_over_pe2 = np.minimum(bth**2 / phi ** (4 / 3), bth**6 / phi**2)
-    lamda = np.minimum(1, bth**4 / phi)
-
-    popt, pcov = curve_fit(
-        fit_func,
-        nw / ne_over_pe2,
-        lamda * spec_visc,
-        p0=(8.0,),
-        bounds=(2.0, 40.0),
-        jac=fit_func_jac,
-    )
-
-    return PeResult(popt[0], pcov[0][0])
-
-
-async def do_inferences(
-    bg_model: torch.nn.Module,
-    visc_normed_bg: torch.Tensor,
-    bg_range: psst.Range,
-    bth_model: torch.nn.Module,
-    visc_normed_bth: torch.Tensor,
-    bth_range: psst.Range,
-) -> tuple[float, float]:
-    """Perform two inferences concurrently to obtain the estimates for Bg and Bth.
-
-    Args:
-        bg_model (torch.nn.Module): Model to infer the Bg value.
-        visc_normed_bg (torch.Tensor): The normalized viscosity tensor for inferring
-          Bg.
-        bg_range (psst.Range): The range of Bg values to assist in normalization.
-        bth_model (torch.nn.Module): Model to infer the Bth value.
-        visc_normed_bth (torch.Tensor): The normalized viscosity tensor for inferring
-          Bth.
-        bth_range (psst.Range): The range of Bth values to assist in normalization.
-
-    Returns:
-        tuple[float, float]: The estimated values of Bg and Bth, respectively.
-    """
-    bg_task = asyncio.create_task(inference_model(bg_model, visc_normed_bg, bg_range))
-    bth_task = asyncio.create_task(
-        inference_model(bth_model, visc_normed_bth, bth_range)
-    )
-    bg = await bg_task
-    bth = await bth_task
-    return bg, bth
-
-
-async def do_fits(
-    bg: float,
-    bth: float,
-    reduced_conc: npt.NDArray,
-    degree_polym: npt.NDArray,
-    specific_viscosity: npt.NDArray,
-) -> tuple[PeResult, PeResult, PeResult]:
-    """Perform three least squares fits for estimating Pe in three different cases:
-    (1) both Bg and Bth are valid, (2) only Bg is valid, (3) only Bth is valid.
-
-    Args:
-        bg (float): The estimated value of Bg.
-        bth (float): The estimated value of Bg.
-        reduced_conc (npt.NDArray): The reduced concentration :math:`cl^3`.
-        degree_polym (npt.NDArray): The weight-average degree of polymerization
-          :math:`N_w`.
-        specific_viscosity (npt.NDArray): The specific viscosity.
-
-    Returns:
-        tuple[PeResult, PeResult, PeResult]: The estimated values and standard errors
-          for the following three cases, respectively: (1) both Bg and Bth are valid,
-          (2) only Bg is valid, (3) only Bth is valid.
-    """
-    combo_task = asyncio.create_task(
-        fit_pe_combo(bg, bth, reduced_conc, degree_polym, specific_viscosity)
-    )
-    bg_only_task = asyncio.create_task(
-        fit_pe_bg_only(bg, reduced_conc, degree_polym, specific_viscosity)
-    )
-    bth_only_task = asyncio.create_task(
-        fit_pe_bth_only(bth, reduced_conc, degree_polym, specific_viscosity)
-    )
-    pe_combo = await combo_task
-    pe_bg_only = await bg_only_task
-    pe_bth_only = await bth_only_task
-    return pe_combo, pe_bg_only, pe_bth_only
 
 
 async def evaluate_dataset(
@@ -405,7 +62,7 @@ async def evaluate_dataset(
     bg_model: torch.nn.Module,
     bth_model: torch.nn.Module,
     range_config: RangeResponse,
-) -> InferenceResult:
+) -> EvaluationResponse:
     """Perform an evaluation of experimental data given one previously trained PyTorch
     model for each of the :math:`B_g` and :math:`B_{th}` parameters.
 
@@ -469,13 +126,30 @@ async def evaluate_dataset(
         bg, bth, reduced_conc, degree_polym, specific_viscosity
     )
 
-    return InferenceResult(
-        bg,
-        bth,
-        pe_combo,
-        pe_bg_only,
-        pe_bth_only,
-        reduced_conc,
-        degree_polym,
-        specific_viscosity,
+    combo_result = create_result(
+        bg=bg,
+        bth=bth,
+        pe=pe_combo.opt,
+        pe_variance=pe_combo.var,
+        rep_unit_length=repeat_unit.length,
+    )
+    bg_only_result = create_result(
+        bg=bg,
+        bth=None,
+        pe=pe_bg_only.opt,
+        pe_variance=pe_bg_only.var,
+        rep_unit_length=repeat_unit.length,
+    )
+    bth_only_result = create_result(
+        bg=None,
+        bth=bth,
+        pe=pe_bth_only.opt,
+        pe_variance=pe_bth_only.var,
+        rep_unit_length=repeat_unit.length,
+    )
+
+    return EvaluationResponse(
+        both_bg_and_bth=combo_result,
+        bg_only=bg_only_result,
+        bth_only=bth_only_result,
     )
