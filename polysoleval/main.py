@@ -22,7 +22,7 @@ TMPPATH = Path(environ["tmppath"])
 DB_PASSWORD_FILE = Path(environ["modeldb_root_password_file"])
 DB_PASSWORD = DB_PASSWORD_FILE.read_text().strip()
 
-DB = modeldb.start_session(DB_PASSWORD, MODELPATH, RANGEPATH, update=True)
+DB = modeldb.start_session(DB_PASSWORD, MODELPATH, RANGEPATH, update=False)
 
 model_range_spec = tuple[str, str]
 bg_bth_models = tuple[Optional[torch.nn.Module], Optional[torch.nn.Module]]
@@ -182,8 +182,8 @@ async def get_ranges():
     return [
         RangeResponse(
             name=db_range.name,
-            phi_res=db_range.phi_range.shape,
-            nw_res=db_range.nw_range.shape,
+            phi_res=db_range.num_phi,
+            nw_res=db_range.num_nw,
             phi_range=BasicRange(
                 min_value=db_range.phi_range.min_value,
                 max_value=db_range.phi_range.max_value,
@@ -283,13 +283,20 @@ async def post_evaluate(
     try:
         bg_model, bth_model = ML_MODELS[(ml_model_name, range_name)]
         if bg_model is None or bth_model is None:
-            raise ValueError("Model not loaded!")
+            raise KeyError("Model not loaded!")
     except KeyError as ke:
         print(ML_MODELS)
-        raise ke
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            detail=f"invalid model name: {ke.args}",
+        )
+    phi_range = asdict(range_.phi_range)
+    phi_range["shape"] = range_.num_phi
+    nw_range = asdict(range_.nw_range)
+    nw_range["shape"] = range_.num_nw
     range_config = psst.RangeConfig(
-        phi_range=asdict(range_.phi_range),
-        nw_range=asdict(range_.nw_range),
+        phi_range=phi_range,
+        nw_range=nw_range,
         visc_range=asdict(range_.visc_range),
         bg_range=asdict(range_.bg_range),
         bth_range=asdict(range_.bth_range),
@@ -298,16 +305,20 @@ async def post_evaluate(
 
     repeat_unit = evaluate.RepeatUnit(length, mass)
 
-    # Do evaluation (two inferences and one curve fit)
-    result = evaluate.evaluate_dataset(
-        conc,
-        mw,
-        visc,
-        repeat_unit,
-        bg_model,
-        bth_model,
-        range_config,
-    )
+    # Do evaluation (two inferences and three curve fits)
+    try:
+        result = await evaluate.evaluate_dataset(
+            conc,
+            mw,
+            visc,
+            repeat_unit,
+            bg_model,
+            bth_model,
+            range_config,
+        )
+    except Exception as re:
+        detail = "unexpected failure in evaluation\n" + re.args[0]
+        raise HTTPException(status.HTTP_417_EXPECTATION_FAILED, detail=detail)
 
     bg_only_result = EvaluationResult.create(
         bg=result.bg,

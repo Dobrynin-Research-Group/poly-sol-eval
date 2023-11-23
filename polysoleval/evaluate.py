@@ -1,4 +1,5 @@
 from __future__ import annotations
+import asyncio
 import multiprocessing as mpr
 from typing import NamedTuple
 
@@ -14,7 +15,7 @@ __all__ = [
     "AVOGADRO_CONSTANT",
     "GOOD_EXP",
     "process_data_to_grid",
-    "transform_data",
+    "transform_data_to_grid",
     "fit_func",
     "evaluate_dataset",
     "RepeatUnit",
@@ -155,7 +156,7 @@ def process_data_to_grid(
     return 10**log_phi_bins, 10**log_nw_bins, visc_out
 
 
-def transform_data(
+def transform_data_to_grid(
     reduced_conc: np.ndarray,
     degree_polym: np.ndarray,
     spec_visc: np.ndarray,
@@ -216,7 +217,7 @@ def transform_data(
     return visc_normed_bg, visc_normed_bth
 
 
-def inference_model(
+async def inference_model(
     model: torch.nn.Module,
     visc_normed: torch.Tensor,
     b_range: psst.Range,
@@ -229,13 +230,12 @@ def inference_model(
         visc_normed (torch.Tensor): The normalized viscosity, appropriate to the
           parameter to be evaluated.
         b_range (psst.Range): The Range of the parameter to be evaluated.
-        device (torch.device): The device on which to run the inference.
 
     Returns:
         float: The inferred value of the parameter.
     """
-
-    pred: torch.Tensor = model(visc_normed.unsqueeze_(0))
+    with torch.no_grad():
+        pred: torch.Tensor = model(visc_normed.unsqueeze_(0))
 
     b_range.unnormalize(pred)
 
@@ -247,12 +247,12 @@ def fit_func(nw_over_g_lamda_g: np.ndarray, pe: float) -> np.ndarray:
 
 
 def fit_func_jac(nw_over_g_lamda_g: np.ndarray, pe: float) -> np.ndarray:
-    pe_arr = np.array([pe]).reshape(1, 1)
+    # pe_arr = np.array([pe]).reshape(1, 1)
     nw_over_g_lamda_g = nw_over_g_lamda_g.reshape(-1, 1)
     return -2 * nw_over_g_lamda_g**2 / pe**3 - 4 * nw_over_g_lamda_g**3 / pe**5
 
 
-def fit_pe_combo(
+async def fit_pe_combo(
     bg: float,
     bth: float,
     phi: np.ndarray,
@@ -278,7 +278,7 @@ def fit_pe_combo(
     return PeResult(popt[0], pcov[0][0])
 
 
-def fit_pe_bg_only(
+async def fit_pe_bg_only(
     bg: float,
     phi: np.ndarray,
     nw: np.ndarray,
@@ -298,7 +298,7 @@ def fit_pe_bg_only(
     return PeResult(popt[0], pcov[0][0])
 
 
-def fit_pe_bth_only(
+async def fit_pe_bth_only(
     bth: float,
     phi: np.ndarray,
     nw: np.ndarray,
@@ -320,7 +320,77 @@ def fit_pe_bth_only(
     return PeResult(popt[0], pcov[0][0])
 
 
-def evaluate_dataset(
+async def do_inferences(
+    bg_model: torch.nn.Module,
+    visc_normed_bg: torch.Tensor,
+    bg_range: psst.Range,
+    bth_model: torch.nn.Module,
+    visc_normed_bth: torch.Tensor,
+    bth_range: psst.Range,
+) -> tuple[float, float]:
+    """Perform two inferences concurrently to obtain the estimates for Bg and Bth.
+
+    Args:
+        bg_model (torch.nn.Module): Model to infer the Bg value.
+        visc_normed_bg (torch.Tensor): The normalized viscosity tensor for inferring
+          Bg.
+        bg_range (psst.Range): The range of Bg values to assist in normalization.
+        bth_model (torch.nn.Module): Model to infer the Bth value.
+        visc_normed_bth (torch.Tensor): The normalized viscosity tensor for inferring
+          Bth.
+        bth_range (psst.Range): The range of Bth values to assist in normalization.
+
+    Returns:
+        tuple[float, float]: The estimated values of Bg and Bth, respectively.
+    """
+    bg_task = asyncio.create_task(inference_model(bg_model, visc_normed_bg, bg_range))
+    bth_task = asyncio.create_task(
+        inference_model(bth_model, visc_normed_bth, bth_range)
+    )
+    bg = await bg_task
+    bth = await bth_task
+    return bg, bth
+
+
+async def do_fits(
+    bg: float,
+    bth: float,
+    reduced_conc: npt.NDArray,
+    degree_polym: npt.NDArray,
+    specific_viscosity: npt.NDArray,
+) -> tuple[PeResult, PeResult, PeResult]:
+    """Perform three least squares fits for estimating Pe in three different cases:
+    (1) both Bg and Bth are valid, (2) only Bg is valid, (3) only Bth is valid.
+
+    Args:
+        bg (float): The estimated value of Bg.
+        bth (float): The estimated value of Bg.
+        reduced_conc (npt.NDArray): The reduced concentration :math:`cl^3`.
+        degree_polym (npt.NDArray): The weight-average degree of polymerization
+          :math:`N_w`.
+        specific_viscosity (npt.NDArray): The specific viscosity.
+
+    Returns:
+        tuple[PeResult, PeResult, PeResult]: The estimated values and standard errors
+          for the following three cases, respectively: (1) both Bg and Bth are valid,
+          (2) only Bg is valid, (3) only Bth is valid.
+    """
+    combo_task = asyncio.create_task(
+        fit_pe_combo(bg, bth, reduced_conc, degree_polym, specific_viscosity)
+    )
+    bg_only_task = asyncio.create_task(
+        fit_pe_bg_only(bg, reduced_conc, degree_polym, specific_viscosity)
+    )
+    bth_only_task = asyncio.create_task(
+        fit_pe_bth_only(bth, reduced_conc, degree_polym, specific_viscosity)
+    )
+    pe_combo = await combo_task
+    pe_bg_only = await bg_only_task
+    pe_bth_only = await bth_only_task
+    return pe_combo, pe_bg_only, pe_bth_only
+
+
+async def evaluate_dataset(
     concentration_gpL: npt.NDArray,
     mol_weight_kgpmol: npt.NDArray,
     specific_viscosity: npt.NDArray,
@@ -364,7 +434,7 @@ def evaluate_dataset(
         mol_weight_kgpmol,
         repeat_unit,
     )
-    visc_normed_bg, visc_normed_bth = transform_data(
+    visc_normed_bg, visc_normed_bth = transform_data_to_grid(
         reduced_conc,
         degree_polym,
         specific_viscosity,
@@ -373,30 +443,18 @@ def evaluate_dataset(
         range_config.visc_range,
     )
 
-    with mpr.Pool(3) as pool:
-        bg_result = pool.apply_async(
-            inference_model, (bg_model, visc_normed_bg, range_config.bg_range)
-        )
-        bth_result = pool.apply_async(
-            inference_model, (bth_model, visc_normed_bth, range_config.bth_range)
-        )
+    bg, bth = await do_inferences(
+        bg_model,
+        visc_normed_bg,
+        range_config.bg_range,
+        bth_model,
+        visc_normed_bth,
+        range_config.bth_range,
+    )
 
-        bg = bg_result.get()
-        bth = bth_result.get()
-
-        pe1 = pool.apply_async(
-            fit_pe_combo, (bg, bth, reduced_conc, degree_polym, specific_viscosity)
-        )
-        pe2 = pool.apply_async(
-            fit_pe_bg_only, (bg, reduced_conc, degree_polym, specific_viscosity)
-        )
-        pe3 = pool.apply_async(
-            fit_pe_bth_only, (bth, reduced_conc, degree_polym, specific_viscosity)
-        )
-
-        pe_combo = pe1.get()
-        pe_bg_only = pe2.get()
-        pe_bth_only = pe3.get()
+    pe_combo, pe_bg_only, pe_bth_only = await do_fits(
+        bg, bth, reduced_conc, degree_polym, specific_viscosity
+    )
 
     return InferenceResult(
         bg,
