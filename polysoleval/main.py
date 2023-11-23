@@ -5,7 +5,6 @@ from typing import Annotated
 
 from fastapi import FastAPI, Form, HTTPException, UploadFile, status
 
-import psst
 from . import evaluate
 from .load import *
 from .responses import *
@@ -135,20 +134,6 @@ async def post_evaluate(
     except Exception as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, e.args[0]) from e
 
-    # Set up config
-    phi_range = range_response.phi_range.model_dump()
-    phi_range["shape"] = range_response.phi_res
-    nw_range = range_response.nw_range.model_dump()
-    nw_range["shape"] = range_response.nw_res
-    range_config = psst.RangeConfig(
-        phi_range=phi_range,
-        nw_range=nw_range,
-        visc_range=range_response.visc_range.model_dump(),
-        bg_range=range_response.bg_range.model_dump(),
-        bth_range=range_response.bth_range.model_dump(),
-        pe_range=range_response.pe_range.model_dump(),
-    )
-
     repeat_unit = evaluate.RepeatUnit(length, mass)
 
     # Do evaluation (two inferences and three curve fits)
@@ -160,7 +145,7 @@ async def post_evaluate(
             repeat_unit,
             bg_model,
             bth_model,
-            range_config,
+            range_response,
         )
     except Exception as re:
         detail = "unexpected failure in evaluation\n" + re.args[0]

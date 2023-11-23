@@ -1,6 +1,5 @@
 from __future__ import annotations
 import asyncio
-import multiprocessing as mpr
 from typing import NamedTuple
 
 import numpy as np
@@ -9,6 +8,7 @@ import torch
 from scipy.optimize import curve_fit
 
 import psst
+from .responses import BasicRange, RangeResponse
 
 
 __all__ = [
@@ -22,6 +22,11 @@ __all__ = [
     "PeResult",
     "InferenceResult",
 ]
+
+
+class Resolution(NamedTuple):
+    phi: int
+    nw: int
 
 
 class RepeatUnit(NamedTuple):
@@ -87,8 +92,9 @@ def process_data_to_grid(
     phi_data: np.ndarray,
     nw_data: np.ndarray,
     visc_data: np.ndarray,
-    phi_range: psst.Range,
-    nw_range: psst.Range,
+    res: Resolution,
+    phi_range: BasicRange,
+    nw_range: BasicRange,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Transform a set of data ``(phi, nw, visc)`` into an "image", where each "pixel"
     along axis 0 represents a bin of values in the log-scale of ``phi_range`` and those
@@ -113,8 +119,7 @@ def process_data_to_grid(
           index ``(i, j)`` approximately corresponds to the reduced concentration at
           index ``i`` and the DP at index ``j``.
     """
-    assert phi_range.shape is not None and nw_range.shape is not None
-    shape = (phi_range.shape, nw_range.shape)
+    shape = (res.phi, res.nw)
     visc_out = np.zeros(shape)
     counts = np.zeros(shape, dtype=np.uint32)
 
@@ -160,9 +165,10 @@ def transform_data_to_grid(
     reduced_conc: np.ndarray,
     degree_polym: np.ndarray,
     spec_visc: np.ndarray,
-    phi_range: psst.Range,
-    nw_range: psst.Range,
-    visc_range: psst.Range,
+    res: Resolution,
+    phi_range: BasicRange,
+    nw_range: BasicRange,
+    visc_range: BasicRange,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Transform the raw, reduced data into two 2D tensors of reduced, normalized
     viscosity data ready for use in a neural network.
@@ -186,6 +192,7 @@ def transform_data_to_grid(
         reduced_conc,
         degree_polym,
         spec_visc,
+        res,
         phi_range,
         nw_range,
     )
@@ -397,7 +404,7 @@ async def evaluate_dataset(
     repeat_unit: RepeatUnit,
     bg_model: torch.nn.Module,
     bth_model: torch.nn.Module,
-    range_config: psst.RangeConfig,
+    range_config: RangeResponse,
 ) -> InferenceResult:
     """Perform an evaluation of experimental data given one previously trained PyTorch
     model for each of the :math:`B_g` and :math:`B_{th}` parameters.
@@ -438,18 +445,24 @@ async def evaluate_dataset(
         reduced_conc,
         degree_polym,
         specific_viscosity,
+        Resolution(range_config.phi_res, range_config.nw_res),
         range_config.phi_range,
         range_config.nw_range,
         range_config.visc_range,
     )
 
+    bg_range = psst.Range(
+        min_value=range_config.bg_range.min_value,
+        max_value=range_config.bg_range.max_value,
+        log_scale=range_config.bg_range.log_scale,
+    )
+    bth_range = psst.Range(
+        min_value=range_config.bth_range.min_value,
+        max_value=range_config.bth_range.max_value,
+        log_scale=range_config.bth_range.log_scale,
+    )
     bg, bth = await do_inferences(
-        bg_model,
-        visc_normed_bg,
-        range_config.bg_range,
-        bth_model,
-        visc_normed_bth,
-        range_config.bth_range,
+        bg_model, visc_normed_bg, bg_range, bth_model, visc_normed_bth, bth_range
     )
 
     pe_combo, pe_bg_only, pe_bth_only = await do_fits(
