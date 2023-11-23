@@ -21,8 +21,8 @@ services:
       - modeldb
     environment:
       modeldb_root_password_file: /run/secrets/modeldb_password
-      modelpath: models_test
-      rangepath: PSST/ranges
+      modelpath: models-ts
+      rangepath: ranges
       tmppath: tmp
     secrets:
       - modeldb_password
