@@ -5,10 +5,10 @@ from typing import Annotated
 
 from fastapi import FastAPI, Form, HTTPException, UploadFile, status
 
-from . import evaluate
-from .load import *
-from .responses import *
-from .verify import verify_datafile
+from polysoleval.evaluate import create_result, evaluate_dataset, RepeatUnit
+from polysoleval.load import *
+from polysoleval.responses import *
+from polysoleval.verify import verify_datafile
 
 
 MODELPATH = Path(environ["modelpath"])
@@ -74,7 +74,7 @@ async def post_new_parameters(params: InputParameters):
             status.HTTP_411_LENGTH_REQUIRED,
             detail="rep_unit_length (repeat unit length) required",
         )
-    return EvaluationResult.create(
+    return create_result(
         bg=params.bg,
         bth=params.bth,
         pe=params.pe,
@@ -134,15 +134,13 @@ async def post_evaluate(
     except Exception as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, e.args[0]) from e
 
-    repeat_unit = evaluate.RepeatUnit(length, mass)
-
     # Do evaluation (two inferences and three curve fits)
     try:
-        result = await evaluate.evaluate_dataset(
+        result = await evaluate_dataset(
             conc,
             mw,
             visc,
-            repeat_unit,
+            RepeatUnit(length, mass),
             bg_model,
             bth_model,
             range_response,
@@ -151,30 +149,4 @@ async def post_evaluate(
         detail = "unexpected failure in evaluation\n" + re.args[0]
         raise HTTPException(status.HTTP_417_EXPECTATION_FAILED, detail=detail)
 
-    bg_only_result = EvaluationResult.create(
-        bg=result.bg,
-        bth=None,
-        pe=result.pe_bg_only.opt,
-        pe_variance=result.pe_bg_only.var,
-        rep_unit_length=length,
-    )
-    bth_only_result = EvaluationResult.create(
-        bg=None,
-        bth=result.bth,
-        pe=result.pe_bth_only.opt,
-        pe_variance=result.pe_bth_only.var,
-        rep_unit_length=length,
-    )
-    combo_result = EvaluationResult.create(
-        bg=result.bg,
-        bth=result.bth,
-        pe=result.pe_combo.opt,
-        pe_variance=result.pe_combo.var,
-        rep_unit_length=length,
-    )
-
-    return EvaluationResponse(
-        bg_only=bg_only_result,
-        bth_only=bth_only_result,
-        both_bg_and_bth=combo_result,
-    )
+    return result
