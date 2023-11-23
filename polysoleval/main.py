@@ -1,167 +1,56 @@
 from contextlib import asynccontextmanager
-from dataclasses import asdict
 from os import environ
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 from fastapi import FastAPI, Form, HTTPException, UploadFile, status
-import numpy as np
-from pydantic import BaseModel
-import torch
 
 import psst
-from . import modeldb, evaluate
+from . import evaluate
+from .load import *
+from .responses import *
+from .verify import verify_datafile
 
 
-# TODO: correct error codes
-# TODO: simplify/pydantic-ify enums into model urls
-# TODO: output OpenAPI documentation to yaml
 MODELPATH = Path(environ["modelpath"])
 RANGEPATH = Path(environ["rangepath"])
 TMPPATH = Path(environ["tmppath"])
-DB_PASSWORD_FILE = Path(environ["modeldb_root_password_file"])
-DB_PASSWORD = DB_PASSWORD_FILE.read_text().strip()
 
-DB = modeldb.start_session(DB_PASSWORD, MODELPATH, RANGEPATH, update=False)
-
-model_range_spec = tuple[str, str]
-bg_bth_models = tuple[Optional[torch.nn.Module], Optional[torch.nn.Module]]
-ML_MODELS: dict[model_range_spec, bg_bth_models] = dict()
+RANGES: list[RangeResponse] = list()
+MODELS: list[ModelResponse] = list()
+ModelRangeSpec = tuple[str, str]
+BgBthModels = tuple[MaybeModel, MaybeModel]
+ML_MODELS: dict[ModelRangeSpec, BgBthModels] = dict()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # load range configs
+    for range_file in RANGEPATH.glob("*.yaml"):
+        RANGES.append(load_range_from_yaml(range_file))
+
+    # load model descriptions
+    MODELS = load_models_from_yaml(MODELPATH / "models.yaml")
+
     # load ML models
-    for model_ in modeldb.get_models(DB):
-        model_name = model_.name
-        bg_model = None
-        bth_model = None
-
-        for range_ in modeldb.get_ranges(DB):
-            bg_file = MODELPATH / f"{model_name}-{range_.name}-Bg.pt"
-            if bg_file.is_file():
-                bg_model = torch.jit.load(bg_file)
-                bg_model.eval()
-
-            bth_file = MODELPATH / f"{model_name}-{range_.name}-Bth.pt"
-            if bth_file.is_file():
-                bth_model = torch.jit.load(bth_file)
-                bth_model.eval()
-
-            ML_MODELS[(model_name, range_.name)] = (bg_model, bth_model)
+    for model_ in MODELS:
+        for range_ in RANGES:
+            bg_fp = MODELPATH / f"{model_.name}-{range_.name}-Bg.pt"
+            bth_fp = MODELPATH / f"{model_.name}-{range_.name}-Bth.pt"
+            bg_model = load_model_file(bg_fp)
+            bth_model = load_model_file(bth_fp)
+            key = (model_.name, range_.name)
+            ML_MODELS[key] = (bg_model, bth_model)
 
     yield
+
     # clear ML models
+    RANGES.clear()
+    MODELS.clear()
     ML_MODELS.clear()
 
 
 app = FastAPI(lifespan=lifespan)
-
-
-def phi_to_conc(phi: float, rep_unit_len: float):
-    return phi / rep_unit_len**3 / evaluate.AVOGADRO_CONSTANT * 1e24
-
-
-def conc_to_phi(conc: float, rep_unit_len: float):
-    return conc * rep_unit_len**3 * evaluate.AVOGADRO_CONSTANT / 1e24
-
-
-class Parameters(BaseModel):
-    bg: Optional[float]
-    bth: Optional[float]
-    pe: float
-    pe_variance: Optional[float]
-    rep_unit_length: Optional[float]
-    rep_unit_mass: Optional[float]
-
-
-class ModelResponse(BaseModel):
-    name: str
-    description: Optional[str]
-
-
-class BasicRange(BaseModel):
-    min_value: float
-    max_value: float
-
-
-class RangeResponse(BaseModel):
-    name: str
-
-    phi_res: int
-    nw_res: int
-
-    phi_range: BasicRange
-    nw_range: BasicRange
-    visc_range: BasicRange
-    bg_range: BasicRange
-    bth_range: BasicRange
-    pe_range: BasicRange
-
-
-class EvaluationResult(BaseModel):
-    bg: Optional[float] = None
-    bth: Optional[float] = None
-    pe: float = 0.0
-    pe_variance: Optional[float] = None
-    kuhn_length: float = 0.0
-    thermal_blob_size: Optional[float] = None
-    dp_of_thermal_blob: Optional[float] = None
-    excluded_volume: Optional[float] = None
-    thermal_blob_conc: Optional[float] = None
-    concentrated_conc: float = 0.0
-
-    @classmethod
-    def create(
-        cls,
-        *,
-        bg: Optional[float],
-        bth: Optional[float],
-        pe: float,
-        pe_variance: Optional[float],
-        rep_unit_length: float,
-    ):
-        thermal_blob_size = None
-        dp_of_thermal_blob = None
-        excluded_volume = None
-        thermal_blob_conc = None
-        concentrated_conc = None
-
-        if bg and bth:
-            kuhn_length = rep_unit_length / bth**2
-            phi_th = bth**3 * (bth / bg) ** (1 / (2 * 0.588 - 1))
-            thermal_blob_size = rep_unit_length * bth**2 / phi_th
-            dp_of_thermal_blob = (bth**3 / phi_th) ** 2
-            thermal_blob_conc = phi_to_conc(phi_th, rep_unit_length)
-            excluded_volume = phi_th * kuhn_length**3
-        elif bg:
-            kuhn_length = rep_unit_length / bg ** (1 / 0.412)
-        elif bth:
-            kuhn_length = rep_unit_length / bth**2
-        else:
-            raise ValueError("must supply at least one of bg or bth")
-        concentrated_conc = phi_to_conc(
-            1 / kuhn_length**2 / rep_unit_length, rep_unit_length
-        )
-
-        return cls(
-            bg=bg,
-            bth=bth,
-            pe=pe,
-            pe_variance=pe_variance,
-            kuhn_length=kuhn_length,
-            thermal_blob_size=thermal_blob_size,
-            excluded_volume=excluded_volume,
-            dp_of_thermal_blob=dp_of_thermal_blob,
-            thermal_blob_conc=thermal_blob_conc,
-            concentrated_conc=concentrated_conc,
-        )
-
-
-class EvaluationResponse(BaseModel):
-    bg_only: EvaluationResult
-    bth_only: EvaluationResult
-    both_bg_and_bth: EvaluationResult
 
 
 @app.get("/")
@@ -180,7 +69,7 @@ async def get_ranges():
 
 
 @app.post("/new-parameters")
-async def post_new_parameters(params: Parameters):
+async def post_new_parameters(params: InputParameters):
     if params.rep_unit_length is None:
         raise HTTPException(
             status.HTTP_411_LENGTH_REQUIRED,
@@ -242,14 +131,7 @@ async def post_evaluate(
         )
 
     try:
-        data = np.genfromtxt(
-            datafile.file,
-            delimiter=",",
-            missing_values="",
-            filling_values=np.nan,
-            ndmin=2,
-            unpack=True,
-        )
+        conc, mw, visc = verify_datafile(datafile.file)
     except Exception as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, e.args[0]) from e
 
