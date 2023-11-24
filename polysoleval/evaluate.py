@@ -17,6 +17,19 @@ def create_result(
     pe_variance: Optional[float],
     rep_unit: RepeatUnit,
 ) -> EvaluationResult:
+    if (
+        (bg is not None and bg <= 0.0)
+        or (bg is not None and bg <= 0.0)
+        or pe <= 0.0
+        or (pe_variance is not None and pe_variance <= 0)
+        or rep_unit.length <= 0.0
+        or rep_unit.mass <= 0.0
+    ):
+        raise ValueError(
+            "all given parameters must be positive"
+            f"\n{bg = }, {bth = }, {pe = }, {pe_variance = }, {rep_unit = }"
+        )
+
     thermal_blob_size = None
     dp_of_thermal_blob = None
     excluded_volume = None
