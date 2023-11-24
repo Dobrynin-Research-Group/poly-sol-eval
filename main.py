@@ -7,7 +7,7 @@ from fastapi import FastAPI, Form, HTTPException, UploadFile, status
 
 from polysoleval.evaluate import create_result, evaluate_dataset, RepeatUnit
 from polysoleval.load import *
-from polysoleval.responses import *
+from polysoleval.response_models import *
 from polysoleval.verify import verify_datafile
 
 
@@ -79,7 +79,7 @@ async def post_new_parameters(params: InputParameters):
         bth=params.bth,
         pe=params.pe,
         pe_variance=params.pe_variance,
-        rep_unit_length=params.rep_unit_length,
+        rep_unit=RepeatUnit(params.rep_unit_length, params.rep_unit_mass),
     )
 
 

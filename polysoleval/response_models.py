@@ -44,8 +44,8 @@ class InputParameters(BaseModel):
     bth: Optional[float]
     pe: float
     pe_variance: Optional[float]
-    rep_unit_length: Optional[float]
-    rep_unit_mass: Optional[float]
+    rep_unit_length: float
+    rep_unit_mass: float
 
 
 class EvaluationResult(BaseModel):
