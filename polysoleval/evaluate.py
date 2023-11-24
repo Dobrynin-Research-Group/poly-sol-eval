@@ -15,7 +15,7 @@ def create_result(
     bth: Optional[float],
     pe: float,
     pe_variance: Optional[float],
-    rep_unit_length: float,
+    rep_unit: RepeatUnit,
 ) -> EvaluationResult:
     thermal_blob_size = None
     dp_of_thermal_blob = None
@@ -24,21 +24,20 @@ def create_result(
     concentrated_conc = None
 
     if bg and bth:
-        kuhn_length = rep_unit_length / bth**2
+        kuhn_length = rep_unit.length / bth**2
         phi_th = bth**3 * (bth / bg) ** (1 / (2 * GOOD_EXP - 1))
-        thermal_blob_size = rep_unit_length * bth**2 / phi_th
+        thermal_blob_size = rep_unit.length * bth**2 / phi_th
         dp_of_thermal_blob = (bth**3 / phi_th) ** 2
-        thermal_blob_conc = phi_to_conc(phi_th, rep_unit_length)
+        thermal_blob_conc = phi_to_conc(phi_th, rep_unit)
         excluded_volume = phi_th * kuhn_length**3
     elif bg:
-        kuhn_length = rep_unit_length / bg ** (1 / (1 - GOOD_EXP))
+        kuhn_length = rep_unit.length / bg ** (1 / (1 - GOOD_EXP))
     elif bth:
-        kuhn_length = rep_unit_length / bth**2
+        kuhn_length = rep_unit.length / bth**2
     else:
         raise ValueError("must supply at least one of bg or bth")
-    concentrated_conc = phi_to_conc(
-        1 / kuhn_length**2 / rep_unit_length, rep_unit_length
-    )
+
+    concentrated_conc = phi_to_conc(1 / kuhn_length**2 / rep_unit.length, rep_unit)
 
     return EvaluationResult(
         bg=bg,
@@ -131,21 +130,21 @@ async def evaluate_dataset(
         bth=bth,
         pe=pe_combo.opt,
         pe_variance=pe_combo.var,
-        rep_unit_length=repeat_unit.length,
+        rep_unit=repeat_unit,
     )
     bg_only_result = create_result(
         bg=bg,
         bth=None,
         pe=pe_bg_only.opt,
         pe_variance=pe_bg_only.var,
-        rep_unit_length=repeat_unit.length,
+        rep_unit=repeat_unit,
     )
     bth_only_result = create_result(
         bg=None,
         bth=bth,
         pe=pe_bth_only.opt,
         pe_variance=pe_bth_only.var,
-        rep_unit_length=repeat_unit.length,
+        rep_unit=repeat_unit,
     )
 
     return EvaluationResponse(

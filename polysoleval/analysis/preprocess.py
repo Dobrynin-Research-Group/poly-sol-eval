@@ -26,31 +26,27 @@ class RepeatUnit(NamedTuple):
 
 
 @overload
-def phi_to_conc(phi: float, rep_unit_len: float):
+def phi_to_conc(phi: float, rep_unit: RepeatUnit) -> float:
     ...
 
 
 @overload
-def phi_to_conc(phi: npt.NDArray, rep_unit_len: float):
-    ...
+def phi_to_conc(phi: npt.NDArray, rep_unit: RepeatUnit) -> npt.NDArray:
 
-
-def phi_to_conc(phi, rep_unit_len: float):
-    return phi / rep_unit_len**3 / AVOGADRO_CONSTANT * 1e24
+def phi_to_conc(phi, rep_unit: RepeatUnit):
+    return phi / rep_unit.length**3 / (AVOGADRO_CONSTANT / 1e24 / rep_unit.mass)
 
 
 @overload
-def conc_to_phi(conc: float, rep_unit_len: float):
+def conc_to_phi(conc: float, rep_unit: RepeatUnit) -> float:
     ...
 
 
 @overload
-def conc_to_phi(conc: npt.NDArray, rep_unit_len: float):
-    ...
+def conc_to_phi(conc: npt.NDArray, rep_unit: RepeatUnit) -> npt.NDArray:
 
-
-def conc_to_phi(conc, rep_unit_len: float):
-    return conc * rep_unit_len**3 * AVOGADRO_CONSTANT / 1e24
+def conc_to_phi(conc, rep_unit: RepeatUnit):
+    return conc * rep_unit.length**3 * AVOGADRO_CONSTANT / 1e24 / rep_unit.mass
 
 
 def reduce_data(
@@ -72,7 +68,7 @@ def reduce_data(
           degree of polymerization :math:`N_w`.
     """
 
-    reduced_conc: npt.NDArray = conc_to_phi(conc, repeat_unit.length)
+    reduced_conc: npt.NDArray = conc_to_phi(conc, repeat_unit)
     degree_polym = mol_weight / repeat_unit.mass * 1e3
 
     return reduced_conc, degree_polym
