@@ -3,7 +3,11 @@ from typing import Optional
 import numpy.typing as npt
 import torch
 
-from polysoleval.responses import RangeResponse, EvaluationResponse, EvaluationResult
+from polysoleval.response_models import (
+    RangeResponse,
+    EvaluationResponse,
+    EvaluationResult,
+)
 from polysoleval.analysis.fitting import do_fits
 from polysoleval.analysis.inference import do_inferences
 from polysoleval.analysis.preprocess import *

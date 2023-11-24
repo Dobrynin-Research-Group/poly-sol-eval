@@ -5,7 +5,7 @@ from typing import Any, Optional
 from ruamel.yaml import YAML
 import torch
 
-from .responses import ModelResponse, RangeResponse
+from .response_models import ModelResponse, RangeResponse
 
 
 __all__ = [

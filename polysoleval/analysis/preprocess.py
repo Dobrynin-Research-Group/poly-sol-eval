@@ -4,7 +4,7 @@ import numpy as np
 import numpy.typing as npt
 import torch
 
-from polysoleval.responses import BasicRange
+from polysoleval.response_models import BasicRange
 from polysoleval.range import Range
 
 AVOGADRO_CONSTANT = 6.0221408e23
