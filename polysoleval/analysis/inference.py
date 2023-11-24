@@ -2,13 +2,13 @@ import asyncio
 
 import torch
 
-import psst
+from polysoleval.range import Range
 
 
 async def inference_model(
     model: torch.nn.Module,
     visc_normed: torch.Tensor,
-    b_range: psst.Range,
+    b_range: Range,
 ) -> float:
     """Run the processed viscosity data through a pre-trained model to gain the
     inference results for either :math:`B_g` or :math:`B_{th}`.
@@ -33,10 +33,10 @@ async def inference_model(
 async def do_inferences(
     bg_model: torch.nn.Module,
     visc_normed_bg: torch.Tensor,
-    bg_range: psst.Range,
+    bg_range: Range,
     bth_model: torch.nn.Module,
     visc_normed_bth: torch.Tensor,
-    bth_range: psst.Range,
+    bth_range: Range,
 ) -> tuple[float, float]:
     """Perform two inferences concurrently to obtain the estimates for Bg and Bth.
 

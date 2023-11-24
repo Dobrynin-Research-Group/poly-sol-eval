@@ -1,9 +1,7 @@
-FROM psstbase
+FROM jacobs27/psst-deps
 WORKDIR /code
 
 COPY polysoleval polysoleval
-COPY models-ts models-ts
 COPY ranges ranges
-COPY main.py main.py
-
-CMD ["python3"]
+COPY models-ts models-ts
+COPY main.py ./

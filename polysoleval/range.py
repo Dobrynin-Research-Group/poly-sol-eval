@@ -1,6 +1,5 @@
 from dataclasses import dataclass, field
 from math import log10
-from typing import Callable
 
 import torch
 

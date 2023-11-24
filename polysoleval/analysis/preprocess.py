@@ -4,8 +4,8 @@ import numpy as np
 import numpy.typing as npt
 import torch
 
-import psst
 from polysoleval.responses import BasicRange
+from polysoleval.range import Range
 
 AVOGADRO_CONSTANT = 6.0221408e23
 GOOD_EXP = 0.588
@@ -193,12 +193,12 @@ def transform_data_to_grid(
     )
     bth_denom = nw_arr.reshape(1, -1) * phi_arr.reshape(-1, 1) ** 2
 
-    visc_normed_bg_range = psst.Range(
+    visc_normed_bg_range = Range(
         min_value=visc_range.min_value / bg_denom.max(),
         max_value=visc_range.max_value / bg_denom.min(),
         log_scale=visc_range.log_scale,
     )
-    visc_normed_bth_range = psst.Range(
+    visc_normed_bth_range = Range(
         min_value=visc_range.min_value / bth_denom.max(),
         max_value=visc_range.max_value / bth_denom.min(),
         log_scale=visc_range.log_scale,

@@ -108,12 +108,12 @@ async def evaluate_dataset(
         range_config.visc_range,
     )
 
-    bg_range = psst.Range(
+    bg_range = Range(
         min_value=range_config.bg_range.min_value,
         max_value=range_config.bg_range.max_value,
         log_scale=range_config.bg_range.log_scale,
     )
-    bth_range = psst.Range(
+    bth_range = Range(
         min_value=range_config.bth_range.min_value,
         max_value=range_config.bth_range.max_value,
         log_scale=range_config.bth_range.log_scale,
