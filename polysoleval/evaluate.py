@@ -17,6 +17,26 @@ def create_result(
     pe_variance: Optional[float],
     rep_unit: RepeatUnit,
 ) -> EvaluationResult:
+    """Compute a complete ``EvaluationResult`` from the given parameters.
+
+    The repeat unit project length (``rep_unit_length``) is needed to convert
+    concentrations and length scales from reduced units to real units. At least one of
+    ``bg`` or ``bth`` must not be ``None``. All given parameters must be positive.
+
+    Args:
+        bg (Optional[float]): The good solvent parameter.
+        bth (Optional[float]): The theta solvent/thermal blob parameter.
+        pe (float): The entanglement packing number.
+        pe_variance (Optional[float]): The standard error of ``pe``.
+        rep_unit_length (float): The projection length of the polymer's repeat unit.
+
+    Raises:
+        ValueError: If both ``bg`` and ``bth`` are ``None`` or not given, or if any
+          given parameter is non-positive.
+
+    Returns:
+        EvaluationResult: The values computed from the given independent parameters.
+    """
     if (
         (bg is not None and bg <= 0.0)
         or (bg is not None and bg <= 0.0)
@@ -78,12 +98,13 @@ async def evaluate_dataset(
     """Perform an evaluation of experimental data given one previously trained PyTorch
     model for each of the :math:`B_g` and :math:`B_{th}` parameters.
 
+
     Args:
-        concentration_gpL (np.ndarray): Experimental concentration data in units of
+        concentration_gpL (npt.NDArray): Experimental concentration data in units of
           grams per mole (1D numpy array).
-        mol_weight_kgpmol (np.ndarray): Experimental molecular weight data in units of
+        mol_weight_kgpmol (npt.NDArray): Experimental molecular weight data in units of
           kilograms per mole (1D numpy array).
-        specific_viscosity (np.ndarray): Experimental specific viscosity data in
+        specific_viscosity (npt.NDArray): Experimental specific viscosity data in
           dimensionless units (1D numpy array).
         repeat_unit (RepeatUnit): The projection length and molar mass of the polymer
           repeat unit.
@@ -91,18 +112,14 @@ async def evaluate_dataset(
           parameter.
         bth_model (torch.nn.Module): A pretrained model for evaluating the :math:`B_th`
           parameter.
-        range_config (psst.RangeConfig): A set of ``psst.Range``s. Used to homogenize
-          inferencing of the models by normalizing the experimental data in the same
-          manner as the procedural data that the models were trained on.
+        range_config (RangeResponse): Used to homogenize inferencing of the models by
+          normalizing the experimental data in the same manner as the procedural data
+          that the models were trained on.
 
     Returns:
-        InferenceResult: The results of the model inferences, complete with estimates
-          for :math:`B_g` and :math:`B_{th}`; three estimates of :math:`P_e` with
-          fitting uncertainties, one each for the case where both :math:`B_g` and
-          :math:`B_{th}` are valid, the case where only :math:`B_g` is valid (athermal
-          solvent), and the case where only :math:`B_{th}` is valid (theta solvent);
-          the reduced concentration :math:`\\varphi=cl^3`; the weight-average degree of
-          polymerization; and the unaltered specific viscosity.
+        EvaluationResponse: Three separate ``EvaluationResult``s, one for each of the
+          following cases: (1) both :math:`B_g` and :math:`B_{th}` are valid, (2) only
+          :math:`B_g` is valid, and (3) only :math:`B_{th}` is valid.
     """
 
     reduced_conc, degree_polym = reduce_data(
