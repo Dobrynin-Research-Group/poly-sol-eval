@@ -7,7 +7,7 @@ from fastapi import FastAPI, Form, HTTPException, UploadFile, status
 
 from polysoleval.evaluate import create_result, evaluate_dataset, RepeatUnit
 from polysoleval.load import *
-from polysoleval.responses import *
+from polysoleval.response_models import *
 from polysoleval.verify import verify_datafile
 
 
@@ -54,16 +54,16 @@ app = FastAPI(lifespan=lifespan)
 
 @app.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"models": MODELS}
 
 
 @app.get("/models")
-async def get_models():
+async def get_models() -> list[ModelResponse]:
     return MODELS
 
 
 @app.get("/ranges")
-async def get_ranges():
+async def get_ranges() -> list[RangeResponse]:
     return RANGES
 
 
@@ -79,7 +79,7 @@ async def post_new_parameters(params: InputParameters):
         bth=params.bth,
         pe=params.pe,
         pe_variance=params.pe_variance,
-        rep_unit_length=params.rep_unit_length,
+        rep_unit=RepeatUnit(params.rep_unit_length, params.rep_unit_mass),
     )
 
 

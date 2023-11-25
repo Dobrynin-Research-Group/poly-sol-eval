@@ -3,7 +3,11 @@ from typing import Optional
 import numpy.typing as npt
 import torch
 
-from polysoleval.responses import RangeResponse, EvaluationResponse, EvaluationResult
+from polysoleval.response_models import (
+    RangeResponse,
+    EvaluationResponse,
+    EvaluationResult,
+)
 from polysoleval.analysis.fitting import do_fits
 from polysoleval.analysis.inference import do_inferences
 from polysoleval.analysis.preprocess import *
@@ -15,8 +19,41 @@ def create_result(
     bth: Optional[float],
     pe: float,
     pe_variance: Optional[float],
-    rep_unit_length: float,
+    rep_unit: RepeatUnit,
 ) -> EvaluationResult:
+    """Compute a complete ``EvaluationResult`` from the given parameters.
+
+    The repeat unit project length (``rep_unit_length``) is needed to convert
+    concentrations and length scales from reduced units to real units. At least one of
+    ``bg`` or ``bth`` must not be ``None``. All given parameters must be positive.
+
+    Args:
+        bg (Optional[float]): The good solvent parameter.
+        bth (Optional[float]): The theta solvent/thermal blob parameter.
+        pe (float): The entanglement packing number.
+        pe_variance (Optional[float]): The standard error of ``pe``.
+        rep_unit_length (float): The projection length of the polymer's repeat unit.
+
+    Raises:
+        ValueError: If both ``bg`` and ``bth`` are ``None`` or not given, or if any
+          given parameter is non-positive.
+
+    Returns:
+        EvaluationResult: The values computed from the given independent parameters.
+    """
+    if (
+        (bg is not None and bg < 0.0)
+        or (bg is not None and bg < 0.0)
+        or pe <= 0.0
+        or (pe_variance is not None and pe_variance < 0)
+        or rep_unit.length <= 0.0
+        or rep_unit.mass <= 0.0
+    ):
+        raise ValueError(
+            "all given parameters must be positive"
+            f"\n{bg = }, {bth = }, {pe = }, {pe_variance = }, {rep_unit = }"
+        )
+
     thermal_blob_size = None
     dp_of_thermal_blob = None
     excluded_volume = None
@@ -24,21 +61,20 @@ def create_result(
     concentrated_conc = None
 
     if bg and bth:
-        kuhn_length = rep_unit_length / bth**2
+        kuhn_length = rep_unit.length / bth**2
         phi_th = bth**3 * (bth / bg) ** (1 / (2 * GOOD_EXP - 1))
-        thermal_blob_size = rep_unit_length * bth**2 / phi_th
+        thermal_blob_size = rep_unit.length * bth**2 / phi_th
         dp_of_thermal_blob = (bth**3 / phi_th) ** 2
-        thermal_blob_conc = phi_to_conc(phi_th, rep_unit_length)
+        thermal_blob_conc = phi_to_conc(phi_th, rep_unit)
         excluded_volume = phi_th * kuhn_length**3
     elif bg:
-        kuhn_length = rep_unit_length / bg ** (1 / (1 - GOOD_EXP))
+        kuhn_length = rep_unit.length / bg ** (1 / (1 - GOOD_EXP))
     elif bth:
-        kuhn_length = rep_unit_length / bth**2
+        kuhn_length = rep_unit.length / bth**2
     else:
         raise ValueError("must supply at least one of bg or bth")
-    concentrated_conc = phi_to_conc(
-        1 / kuhn_length**2 / rep_unit_length, rep_unit_length
-    )
+
+    concentrated_conc = phi_to_conc(1 / kuhn_length**2 / rep_unit.length, rep_unit)
 
     return EvaluationResult(
         bg=bg,
@@ -66,12 +102,13 @@ async def evaluate_dataset(
     """Perform an evaluation of experimental data given one previously trained PyTorch
     model for each of the :math:`B_g` and :math:`B_{th}` parameters.
 
+
     Args:
-        concentration_gpL (np.ndarray): Experimental concentration data in units of
+        concentration_gpL (npt.NDArray): Experimental concentration data in units of
           grams per mole (1D numpy array).
-        mol_weight_kgpmol (np.ndarray): Experimental molecular weight data in units of
+        mol_weight_kgpmol (npt.NDArray): Experimental molecular weight data in units of
           kilograms per mole (1D numpy array).
-        specific_viscosity (np.ndarray): Experimental specific viscosity data in
+        specific_viscosity (npt.NDArray): Experimental specific viscosity data in
           dimensionless units (1D numpy array).
         repeat_unit (RepeatUnit): The projection length and molar mass of the polymer
           repeat unit.
@@ -79,18 +116,14 @@ async def evaluate_dataset(
           parameter.
         bth_model (torch.nn.Module): A pretrained model for evaluating the :math:`B_th`
           parameter.
-        range_config (psst.RangeConfig): A set of ``psst.Range``s. Used to homogenize
-          inferencing of the models by normalizing the experimental data in the same
-          manner as the procedural data that the models were trained on.
+        range_config (RangeResponse): Used to homogenize inferencing of the models by
+          normalizing the experimental data in the same manner as the procedural data
+          that the models were trained on.
 
     Returns:
-        InferenceResult: The results of the model inferences, complete with estimates
-          for :math:`B_g` and :math:`B_{th}`; three estimates of :math:`P_e` with
-          fitting uncertainties, one each for the case where both :math:`B_g` and
-          :math:`B_{th}` are valid, the case where only :math:`B_g` is valid (athermal
-          solvent), and the case where only :math:`B_{th}` is valid (theta solvent);
-          the reduced concentration :math:`\\varphi=cl^3`; the weight-average degree of
-          polymerization; and the unaltered specific viscosity.
+        EvaluationResponse: Three separate ``EvaluationResult``s, one for each of the
+          following cases: (1) both :math:`B_g` and :math:`B_{th}` are valid, (2) only
+          :math:`B_g` is valid, and (3) only :math:`B_{th}` is valid.
     """
 
     reduced_conc, degree_polym = reduce_data(
@@ -108,12 +141,12 @@ async def evaluate_dataset(
         range_config.visc_range,
     )
 
-    bg_range = psst.Range(
+    bg_range = Range(
         min_value=range_config.bg_range.min_value,
         max_value=range_config.bg_range.max_value,
         log_scale=range_config.bg_range.log_scale,
     )
-    bth_range = psst.Range(
+    bth_range = Range(
         min_value=range_config.bth_range.min_value,
         max_value=range_config.bth_range.max_value,
         log_scale=range_config.bth_range.log_scale,
@@ -131,21 +164,21 @@ async def evaluate_dataset(
         bth=bth,
         pe=pe_combo.opt,
         pe_variance=pe_combo.var,
-        rep_unit_length=repeat_unit.length,
+        rep_unit=repeat_unit,
     )
     bg_only_result = create_result(
         bg=bg,
         bth=None,
         pe=pe_bg_only.opt,
         pe_variance=pe_bg_only.var,
-        rep_unit_length=repeat_unit.length,
+        rep_unit=repeat_unit,
     )
     bth_only_result = create_result(
         bg=None,
         bth=bth,
         pe=pe_bth_only.opt,
         pe_variance=pe_bth_only.var,
-        rep_unit_length=repeat_unit.length,
+        rep_unit=repeat_unit,
     )
 
     return EvaluationResponse(

@@ -4,8 +4,8 @@ import numpy as np
 import numpy.typing as npt
 import torch
 
-import psst
-from polysoleval.responses import BasicRange
+from polysoleval.response_models import BasicRange
+from polysoleval.range import Range
 
 AVOGADRO_CONSTANT = 6.0221408e23
 GOOD_EXP = 0.588
@@ -17,8 +17,10 @@ class Resolution(NamedTuple):
 
 
 class RepeatUnit(NamedTuple):
-    """Details of the repeat unit. Mass in units of g/mol, projection length (along
-    fully extended axis) in nm (:math:`10^{-9}` m).
+    """``RepeatUnit(length: float, mass: float)``
+
+    Details of the repeat unit. Projection length (along fully extended axis) in nm
+    (:math:`10^{-9}` m) and mass in units of g/mol.
     """
 
     length: float
@@ -26,31 +28,67 @@ class RepeatUnit(NamedTuple):
 
 
 @overload
-def phi_to_conc(phi: float, rep_unit_len: float):
+def phi_to_conc(phi: float, rep_unit: RepeatUnit) -> float:
+    r"""Transform the reduced concentration to solution concentration.
+
+    Args:
+        phi (float): Value of reduced concentration :math:`\varphi=cl^3`.
+        rep_unit (RepeatUnit): Repeat unit projection length and mass.
+
+    Returns:
+        float: The solution concentration :math:`c` in units of g/L.
+    """
     ...
 
 
 @overload
-def phi_to_conc(phi: npt.NDArray, rep_unit_len: float):
+def phi_to_conc(phi: npt.NDArray, rep_unit: RepeatUnit) -> npt.NDArray:
+    r"""Transform the reduced concentration to solution concentration.
+
+    Args:
+        phi (npt.NDArray): Reduced concentration data :math:`\varphi=cl^3`.
+        rep_unit (RepeatUnit): Repeat unit projection length and mass.
+
+    Returns:
+        npt.NDArray: The solution concentration data :math:`c` in units of g/L.
+    """
     ...
 
 
-def phi_to_conc(phi, rep_unit_len: float):
-    return phi / rep_unit_len**3 / AVOGADRO_CONSTANT * 1e24
+def phi_to_conc(phi, rep_unit: RepeatUnit):
+    return phi / rep_unit.length**3 / (AVOGADRO_CONSTANT / 1e24 / rep_unit.mass)
 
 
 @overload
-def conc_to_phi(conc: float, rep_unit_len: float):
+def conc_to_phi(conc: float, rep_unit: RepeatUnit) -> float:
+    r"""Transform the solution concentration to reduced concentration.
+
+    Args:
+        conc (float): Value of solution concentration :math:`c` in units of g/L.
+        rep_unit (RepeatUnit): Repeat unit projection length and mass.
+
+    Returns:
+        float: The reduced concentration :math:`\varphi=cl^3`.
+    """
     ...
 
 
 @overload
-def conc_to_phi(conc: npt.NDArray, rep_unit_len: float):
+def conc_to_phi(conc: npt.NDArray, rep_unit: RepeatUnit) -> npt.NDArray:
+    r"""Transform the solution concentration to reduced concentration.
+
+    Args:
+        conc (npt.NDArray): Solution concentration data :math:`c` in units of g/L.
+        rep_unit (RepeatUnit): Repeat unit projection length and mass.
+
+    Returns:
+        npt.NDArray: The reduced concentration data :math:`\varphi=cl^3`.
+    """
     ...
 
 
-def conc_to_phi(conc, rep_unit_len: float):
-    return conc * rep_unit_len**3 * AVOGADRO_CONSTANT / 1e24
+def conc_to_phi(conc, rep_unit: RepeatUnit):
+    return conc * rep_unit.length**3 * AVOGADRO_CONSTANT / 1e24 / rep_unit.mass
 
 
 def reduce_data(
@@ -58,21 +96,23 @@ def reduce_data(
     mol_weight: npt.NDArray,
     repeat_unit: RepeatUnit,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Reduce the concentration and molecular weight measurements from concentration
-    in g/L to :math:`(c*l^3)` and weight-average molecular weight in kg/mol to weight-
-    average degree of polymerization (number of repeat units per chain).
+    r"""Reduce the concentration and molecular weight measurements.
+
+    The measurements are reduced from concentration in g/L to :math:`\varphi=cl^3` and
+    weight-average molecular weight in kg/mol to weight-average degree of
+    polymerization (number of repeat units per chain).
 
     Args:
-        conc (np.ndarray): Concentration in g/L.
-        mol_weight (np.ndarray): Weight-average molecular weight in kg/mol.
-        repeat_unit (RepeatUnit): The mass in g/mol and length in nm of a repeat unit.
+        conc (npt.NDArray): Concentration in g/L.
+        mol_weight (npt.NDArray): Weight-average molecular weight in kg/mol.
+        repeat_unit (RepeatUnit): The length in nm and mass in g/mol of a repeat unit.
 
     Returns:
-        tuple[np.ndarray, np.ndarray]: The reduced concentration :math:`cl^3` and
-          degree of polymerization :math:`N_w`.
+        tuple[npt.NDArray, npt.NDArray]: The reduced concentration :math:`\varphi=cl^3`
+          and degree of polymerization :math:`N_w`.
     """
 
-    reduced_conc: npt.NDArray = conc_to_phi(conc, repeat_unit.length)
+    reduced_conc: npt.NDArray = conc_to_phi(conc, repeat_unit)
     degree_polym = mol_weight / repeat_unit.mass * 1e3
 
     return reduced_conc, degree_polym
@@ -193,12 +233,12 @@ def transform_data_to_grid(
     )
     bth_denom = nw_arr.reshape(1, -1) * phi_arr.reshape(-1, 1) ** 2
 
-    visc_normed_bg_range = psst.Range(
+    visc_normed_bg_range = Range(
         min_value=visc_range.min_value / bg_denom.max(),
         max_value=visc_range.max_value / bg_denom.min(),
         log_scale=visc_range.log_scale,
     )
-    visc_normed_bth_range = psst.Range(
+    visc_normed_bth_range = Range(
         min_value=visc_range.min_value / bth_denom.max(),
         max_value=visc_range.max_value / bth_denom.min(),
         log_scale=visc_range.log_scale,

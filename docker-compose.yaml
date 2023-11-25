@@ -1,7 +1,8 @@
 services:
   web:
     build: .
-    restart: always
+    # build: .
+    # restart: always
     working_dir: /code
     networks:
       - psstnet

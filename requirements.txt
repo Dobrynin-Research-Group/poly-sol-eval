@@ -1,10 +1,8 @@
-fastapi
-uvicorn
-torch
-numpy
-sqlalchemy
-scipy
-python-multipart
-mysqlclient
-ruamel.yaml
 attrs
+fastapi
+numpy
+python-multipart
+ruamel.yaml
+scipy
+torch
+uvicorn
