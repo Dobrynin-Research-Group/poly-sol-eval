@@ -42,10 +42,10 @@ def create_result(
         EvaluationResult: The values computed from the given independent parameters.
     """
     if (
-        (bg is not None and bg <= 0.0)
-        or (bg is not None and bg <= 0.0)
+        (bg is not None and bg < 0.0)
+        or (bg is not None and bg < 0.0)
         or pe <= 0.0
-        or (pe_variance is not None and pe_variance <= 0)
+        or (pe_variance is not None and pe_variance < 0)
         or rep_unit.length <= 0.0
         or rep_unit.mass <= 0.0
     ):

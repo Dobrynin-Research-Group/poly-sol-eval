@@ -54,16 +54,16 @@ app = FastAPI(lifespan=lifespan)
 
 @app.get("/")
 async def root():
-    return {"message": "Hello World"}
+    return {"models": MODELS}
 
 
 @app.get("/models")
-async def get_models():
+async def get_models() -> list[ModelResponse]:
     return MODELS
 
 
 @app.get("/ranges")
-async def get_ranges():
+async def get_ranges() -> list[RangeResponse]:
     return RANGES
 
 
