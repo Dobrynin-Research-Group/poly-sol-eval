@@ -1,0 +1,24 @@
+---
+phi_range:
+  min_value: 3.e-5
+  max_value: 0.02
+  shape: 224
+  log_scale: True
+nw_range:
+  min_value: 100
+  max_value: 1.e+5
+  shape: 224
+  log_scale: True
+visc_range:
+  min_value: 1
+  max_value: 1.e+6
+  log_scale: True
+bg_range:
+  min_value: 0.36
+  max_value: 1.55
+bth_range:
+  min_value: 0.22
+  max_value: 0.82
+pe_range:
+  min_value: 3.2
+  max_value: 13.5

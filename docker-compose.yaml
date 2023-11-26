@@ -1,0 +1,19 @@
+services:
+  web:
+    build: .
+    # build: .
+    # restart: always
+    working_dir: /code
+    networks:
+      - psstnet
+    ports:
+      - "80:80"
+    environment:
+      modelpath: models-ts
+      rangepath: ranges
+      tmppath: tmp
+    command: ["uvicorn", "main:app", "--port", "80", "--host", "0.0.0.0"]
+
+networks:
+  psstnet:
+    driver: bridge

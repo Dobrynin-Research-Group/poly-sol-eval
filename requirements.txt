@@ -1,0 +1,8 @@
+attrs
+fastapi
+numpy
+python-multipart
+ruamel.yaml
+scipy
+torch
+uvicorn
