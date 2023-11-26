@@ -15,6 +15,7 @@ __all__ = [
     "load_model_file",
 ]
 
+_yaml = YAML(typ="safe", pure=True)
 _yaml_load = YAML(typ="safe", pure=True).load
 MaybeModel = Optional[torch.nn.Module]
 
@@ -34,12 +35,9 @@ def load_models_from_yaml(filepath: Path) -> list[ModelResponse]:
           from the file.
     """
     with open(filepath, "r") as fp:
-        model_list: list[dict[str, Any]] = _yaml_load(fp)
+        model_list: list[dict[str, Any]] = _yaml.load(fp)
 
-    responses: list[ModelResponse] = list()
-    for m in model_list:
-        responses.append(ModelResponse.model_validate_json(json.dumps(m)))
-    return responses
+    return [ModelResponse.model_validate_json(json.dumps(m)) for m in model_list]
 
 
 def load_range_from_yaml(filepath: Path) -> RangeResponse:
