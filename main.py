@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from os import environ
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Optional
 
 from fastapi import FastAPI, Form, HTTPException, UploadFile, status
 
@@ -15,8 +15,8 @@ MODELPATH = Path(environ["modelpath"])
 RANGEPATH = Path(environ["rangepath"])
 TMPPATH = Path(environ["tmppath"])
 
-RANGES: list[RangeResponse] = list()
-MODELS: list[ModelResponse] = list()
+RANGES: dict[str, RangeResponse] = dict()
+MODELS: dict[str, ModelResponse] = dict()
 ModelRangeSpec = tuple[str, str]
 BgBthModels = tuple[MaybeModel, MaybeModel]
 ML_MODELS: dict[ModelRangeSpec, BgBthModels] = dict()
@@ -26,19 +26,21 @@ ML_MODELS: dict[ModelRangeSpec, BgBthModels] = dict()
 async def lifespan(app: FastAPI):
     # load range configs
     for range_file in RANGEPATH.glob("*.yaml"):
-        RANGES.append(load_range_from_yaml(range_file))
+        range_ = load_range_from_yaml(range_file)
+        RANGES[range_.name] = range_
 
     # load model descriptions
-    MODELS = load_models_from_yaml(MODELPATH / "models.yaml")
+    global MODELS
+    MODELS = {m.name: m for m in load_models_from_yaml(MODELPATH / "models.yaml")}
 
     # load ML models
-    for model_ in MODELS:
-        for range_ in RANGES:
-            bg_fp = MODELPATH / f"{model_.name}-{range_.name}-Bg.pt"
-            bth_fp = MODELPATH / f"{model_.name}-{range_.name}-Bth.pt"
+    for model_name in MODELS:
+        for range_name in RANGES:
+            bg_fp = MODELPATH / f"{model_name}-{range_name}-Bg.pt"
+            bth_fp = MODELPATH / f"{model_name}-{range_name}-Bth.pt"
             bg_model = load_model_file(bg_fp)
             bth_model = load_model_file(bth_fp)
-            key = (model_.name, range_.name)
+            key = (model_name, range_name)
             ML_MODELS[key] = (bg_model, bth_model)
 
     yield
@@ -52,19 +54,52 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
+def get_model_range_pairs(
+    model_name: Optional[str] = None, range_name: Optional[str] = None
+):
+    if model_name is None and range_name is None:
+        raise ValueError("either model_name or range_name must be given")
+
+    return_names: list[tuple[ModelResponse, RangeResponse]] = list()
+
+    for m, r in ML_MODELS.keys():
+        if r == range_name or m == model_name:
+            model_ = MODELS[m]
+            range_ = RANGES[r]
+            return_names.append((model_, range_))
+
+    return return_names
+
+
 @app.get("/")
 async def root():
-    return {"models": MODELS}
+    return {"model_names": [m for m in MODELS], "ranges": [r for r in RANGES.values()]}
 
 
 @app.get("/models")
-async def get_models() -> list[ModelResponse]:
-    return MODELS
+async def get_models():
+    return {"model_names": [m for m in MODELS]}
+
+
+@app.get("/models/{model_name}")
+async def get_model_by_name(model_name: str):
+    pairs = get_model_range_pairs(model_name=model_name)
+    if pairs:
+        return {"pairs": [{"model": m, "range": r} for m, r in pairs]}
+    raise HTTPException(status.HTTP_404_NOT_FOUND, detail="model name not found")
 
 
 @app.get("/ranges")
-async def get_ranges() -> list[RangeResponse]:
-    return RANGES
+async def get_ranges():
+    return {"ranges": [r for r in RANGES.values()]}
+
+
+@app.get("/ranges/{range_name}")
+async def get_range_by_name(range_name: str):
+    pairs = get_model_range_pairs(range_name=range_name)
+    if pairs:
+        return {"pairs": [{"model": m, "range": r} for m, r in pairs]}
+    raise HTTPException(status.HTTP_404_NOT_FOUND, detail="range name not found")
 
 
 @app.post("/new-parameters")
@@ -92,42 +127,23 @@ async def post_evaluate(
     datafile: UploadFile,
 ):
     # Validate first
+    if ml_model_name not in MODELS:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail="Unrecognized model name"
+        )
+    if range_name not in RANGES:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST, detail="Unrecognized range name"
+        )
+
     bg_model, bth_model = ML_MODELS.get((ml_model_name, range_name), (None, None))
     if bg_model is None or bth_model is None:
-        model_exists = False
-        for m in MODELS:
-            if m.name == ml_model_name:
-                model_exists = True
-                break
-        if not model_exists:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST, detail="Unrecognized model name"
-            )
-
-        range_exists = False
-        for r in RANGES:
-            if r.name == range_name:
-                range_exists = True
-                break
-        if not range_exists:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST, detail="Unrecognized range name"
-            )
-
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             detail="Unsupported pair of model and range names",
         )
 
-    range_response = None
-    for r in RANGES:
-        if r.name == range_name:
-            range_response = r
-            break
-    if range_response is None:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, detail="Unrecognized range name"
-        )
+    range_response = RANGES[range_name]
 
     try:
         conc, mw, visc = verify_datafile(datafile.file)
