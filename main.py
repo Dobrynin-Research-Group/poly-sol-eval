@@ -5,21 +5,8 @@ from typing import Annotated, Optional
 
 from fastapi import FastAPI, Form, HTTPException, UploadFile, status
 
-from polysoleval.evaluate import create_result, evaluate_dataset, RepeatUnit
-from polysoleval.load import *
+from polysoleval.globals import *
 from polysoleval.response_models import *
-from polysoleval.verify import verify_datafile
-
-
-MODELPATH = Path(environ["modelpath"])
-RANGEPATH = Path(environ["rangepath"])
-TMPPATH = Path(environ["tmppath"])
-
-RANGES: dict[str, RangeResponse] = dict()
-MODELS: dict[str, ModelResponse] = dict()
-ModelRangeSpec = tuple[str, str]
-BgBthModels = tuple[MaybeModel, MaybeModel]
-ML_MODELS: dict[ModelRangeSpec, BgBthModels] = dict()
 
 
 @asynccontextmanager
