@@ -1,107 +1,87 @@
 from contextlib import asynccontextmanager
-from os import environ
-from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
-from fastapi import FastAPI, Form, HTTPException, UploadFile, status
+from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, status, UploadFile
+from fastapi.responses import StreamingResponse
 
+from polysoleval.datafile import *
+from polysoleval.evaluate import evaluate_dataset, RepeatUnit
 from polysoleval.globals import *
 from polysoleval.response_models import *
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # load range configs
-    for range_file in RANGEPATH.glob("*.yaml"):
-        range_ = load_range_from_yaml(range_file)
-        RANGES[range_.name] = range_
-
     # load model descriptions
-    global MODELS
-    MODELS = {m.name: m for m in load_models_from_yaml(MODELPATH / "models.yaml")}
+    types = ModelType.all_from_yaml(MODELPATH / "model_types.yaml")
+
+    global MODEL_TYPES
+    MODEL_TYPES = {m.name: m for m in types}
 
     # load ML models
-    for model_name in MODELS:
-        for range_name in RANGES:
-            bg_fp = MODELPATH / f"{model_name}-{range_name}-Bg.pt"
-            bth_fp = MODELPATH / f"{model_name}-{range_name}-Bth.pt"
-            bg_model = load_model_file(bg_fp)
-            bth_model = load_model_file(bth_fp)
-            key = (model_name, range_name)
-            ML_MODELS[key] = (bg_model, bth_model)
+    for bg_model_path in MODELPATH.glob("*-Bg.pt"):
+        model_name, range_name, _ = bg_model_path.stem.split("-")
+
+        model_type = MODEL_TYPES.get(model_name, None)
+        if model_type is None:
+            continue
+
+        bth_model_path = bg_model_path.with_stem(f"{model_name}-{range_name}-Bth")
+        if not bth_model_path.is_file():
+            continue
+
+        range_path = RANGEPATH / f"{range_name}.yaml"
+        if not range_path.is_file():
+            continue
+        MODEL_INSTANCES[(model_name, range_name)] = ModelInstance(
+            model_type=model_type,
+            range_path=range_path,
+            bg_model_path=bg_model_path,
+            bth_model_path=bth_model_path,
+        )
 
     yield
 
     # clear ML models
-    RANGES.clear()
-    MODELS.clear()
-    ML_MODELS.clear()
+    MODEL_TYPES.clear()
+    MODEL_INSTANCES.clear()
 
 
 app = FastAPI(lifespan=lifespan)
 
 
-def get_model_range_pairs(
-    model_name: Optional[str] = None, range_name: Optional[str] = None
-):
-    if model_name is None and range_name is None:
-        raise ValueError("either model_name or range_name must be given")
-
-    return_names: list[tuple[ModelResponse, RangeResponse]] = list()
-
-    for m, r in ML_MODELS.keys():
-        if r == range_name or m == model_name:
-            model_ = MODELS[m]
-            range_ = RANGES[r]
-            return_names.append((model_, range_))
-
-    return return_names
-
-
 @app.get("/")
-async def root():
-    return {"model_names": [m for m in MODELS], "ranges": [r for r in RANGES.values()]}
+def root():
+    return HTTPException(status.HTTP_200_OK)
 
 
 @app.get("/models")
-async def get_models():
-    return {"model_names": [m for m in MODELS]}
+def get_models() -> ModelTypesResponse:
+    """Return every model type.
+
+    Returns:
+        _type_: _description_
+    """
+    return ModelTypesResponse(model_types=list(MODEL_TYPES.values()))
 
 
-@app.get("/models/{model_name}")
-async def get_model_by_name(model_name: str):
-    pairs = get_model_range_pairs(model_name=model_name)
-    if pairs:
-        return {"pairs": [{"model": m, "range": r} for m, r in pairs]}
-    raise HTTPException(status.HTTP_404_NOT_FOUND, detail="model name not found")
+@app.get("/models/{model_type}")
+def get_model_instances(model_type: str) -> ModelInstancesResponse:
+    """Return all model instances of the given model type.
 
+    Args:
+        model_type (str): _description_
 
-@app.get("/ranges")
-async def get_ranges():
-    return {"ranges": [r for r in RANGES.values()]}
+    Returns:
+        _type_: _description_
+    """
+    instances = [v.range_set for k, v in MODEL_INSTANCES.items() if k[0] == model_type]
+    if instances:
+        return ModelInstancesResponse(model_instances=instances)
 
-
-@app.get("/ranges/{range_name}")
-async def get_range_by_name(range_name: str):
-    pairs = get_model_range_pairs(range_name=range_name)
-    if pairs:
-        return {"pairs": [{"model": m, "range": r} for m, r in pairs]}
-    raise HTTPException(status.HTTP_404_NOT_FOUND, detail="range name not found")
-
-
-@app.post("/new-parameters")
-async def post_new_parameters(params: InputParameters):
-    if params.rep_unit_length is None:
-        raise HTTPException(
-            status.HTTP_411_LENGTH_REQUIRED,
-            detail="rep_unit_length (repeat unit length) required",
-        )
-    return create_result(
-        bg=params.bg,
-        bth=params.bth,
-        pe=params.pe,
-        pe_variance=params.pe_variance,
-        rep_unit=RepeatUnit(params.rep_unit_length, params.rep_unit_mass),
+    raise HTTPException(
+        status.HTTP_404_NOT_FOUND,
+        detail="No valid instances found for the chosen model type",
     )
 
 
@@ -112,44 +92,46 @@ async def post_evaluate(
     length: Annotated[float, Form(gt=0.0)],
     mass: Annotated[float, Form(gt=0.0)],
     datafile: UploadFile,
-):
+    background_tasks: BackgroundTasks,
+) -> EvaluationResponse:
     # Validate first
-    if ml_model_name not in MODELS:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, detail="Unrecognized model name"
-        )
-    if range_name not in RANGES:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, detail="Unrecognized range name"
-        )
-
-    bg_model, bth_model = ML_MODELS.get((ml_model_name, range_name), (None, None))
-    if bg_model is None or bth_model is None:
+    instance = MODEL_INSTANCES.get((ml_model_name, range_name), None)
+    if instance is None:
         raise HTTPException(
             status.HTTP_400_BAD_REQUEST,
             detail="Unsupported pair of model and range names",
         )
 
-    range_response = RANGES[range_name]
-
     try:
-        conc, mw, visc = verify_datafile(datafile.file)
+        conc, mw, visc = validate(datafile.file)
     except Exception as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, e.args[0]) from e
 
     # Do evaluation (two inferences and three curve fits)
     try:
-        result = await evaluate_dataset(
+        result, arr = evaluate_dataset(
             conc,
             mw,
             visc,
             RepeatUnit(length, mass),
-            bg_model,
-            bth_model,
-            range_response,
+            instance.bg_model,
+            instance.bth_model,
+            instance.range_set,
         )
     except Exception as re:
         detail = "unexpected failure in evaluation\n" + re.args[0]
-        raise HTTPException(status.HTTP_417_EXPECTATION_FAILED, detail=detail)
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail=detail)
 
+    result.token = HANDLER.write_file(arr)
+    background_tasks.add_task(HANDLER.wait_delete, result.token)
     return result
+
+
+@app.get("/datafile/{token}")
+def get_datafile(token: str) -> StreamingResponse:
+    file_generator = HANDLER.get_generator(token)
+
+    if file_generator is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="data not found")
+
+    return StreamingResponse(file_generator())
