@@ -1,11 +1,10 @@
-from typing import NamedTuple, overload
+from typing import NamedTuple, Protocol, overload
 
 import numpy as np
 import numpy.typing as npt
 import torch
 
-from polysoleval.response_models import BasicRange
-from polysoleval.range import Range
+from polysoleval.response_models import Range
 
 AVOGADRO_CONSTANT = 6.0221408e23
 GOOD_EXP = 0.588
@@ -16,13 +15,7 @@ class Resolution(NamedTuple):
     nw: int
 
 
-class RepeatUnit(NamedTuple):
-    """``RepeatUnit(length: float, mass: float)``
-
-    Details of the repeat unit. Projection length (along fully extended axis) in nm
-    (:math:`10^{-9}` m) and mass in units of g/mol.
-    """
-
+class RepeatUnit(Protocol):
     length: float
     mass: float
 
@@ -124,8 +117,8 @@ def process_data_to_grid(
     nw_data: npt.NDArray,
     visc_data: npt.NDArray,
     res: Resolution,
-    phi_range: BasicRange,
-    nw_range: BasicRange,
+    phi_range: Range,
+    nw_range: Range,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     """Transform a set of data ``(phi, nw, visc)`` into an "image", where each "pixel"
     along axis 0 represents a bin of values in the log-scale of ``phi_range`` and those
@@ -197,9 +190,9 @@ def transform_data_to_grid(
     degree_polym: npt.NDArray,
     spec_visc: npt.NDArray,
     res: Resolution,
-    phi_range: BasicRange,
-    nw_range: BasicRange,
-    visc_range: BasicRange,
+    phi_range: Range,
+    nw_range: Range,
+    visc_range: Range,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Transform the raw, reduced data into two 2D tensors of reduced, normalized
     viscosity data ready for use in a neural network.

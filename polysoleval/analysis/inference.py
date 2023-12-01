@@ -2,7 +2,7 @@ import asyncio
 
 import torch
 
-from polysoleval.range import Range
+from polysoleval.response_models import Range
 
 
 async def inference_model(
