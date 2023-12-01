@@ -1,9 +1,10 @@
 from dataclasses import field
 import json
+from math import log10
 from pathlib import Path
 from typing import Any, Optional
 
-from pydantic import BaseModel, PositiveFloat, PositiveInt, FilePath
+from pydantic import BaseModel, PositiveFloat, PositiveInt, FilePath, model_validator
 from pydantic.dataclasses import dataclass
 from ruamel.yaml import YAML
 import torch
@@ -12,13 +13,13 @@ import torch
 __all__ = [
     "MaybeModel",
     "load_range_from_yaml",
-    "BasicRange",
+    "Range",
     "RangeSet",
     "ModelType",
     "ModelInstance",
     "ModelTypesResponse",
     "ModelInstancesResponse",
-    # "RepeatUnitRequest",
+    "RepeatUnit",
     "EvaluationCase",
     "EvaluationResponse",
 ]
@@ -27,10 +28,89 @@ yaml_parser = YAML(typ="safe", pure=True)
 MaybeModel = Optional[torch.nn.Module]
 
 
-class BasicRange(BaseModel):
+@dataclass
+class Range(BaseModel):
     min_value: float
     max_value: float
     log_scale: bool = False
+    _scale_min: float = field(init=False, repr=False)
+    _diff: float = field(init=False, repr=False)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _check_negative_log(cls, data: Any):
+        if isinstance(data, dict):
+            try:
+                minv = data["min_value"]
+                maxv = data["max_value"]
+            except KeyError as ke:
+                raise ValueError(
+                    "missing min_value or max_value in declaration"
+                ) from ke
+
+            logs = data.get("log_scale", False)
+        elif isinstance(data, cls):
+            minv = data.min_value
+            maxv = data.max_value
+            logs = data.log_scale
+        else:
+            raise ValueError(
+                f"unsupported type; expected dict or {cls.__name__}, got {type(data)}"
+            )
+
+        if logs and (minv <= 0.0 or maxv <= 0.0):
+            raise ValueError(
+                "min_value and max_value must be positive with log_scale=True"
+            )
+
+        return data
+
+    def __post_init__(self):
+        if self.log_scale:
+            self._diff = log10(self.max_value / self.min_value)
+            self._scale_min = log10(self.min_value)
+        else:
+            self._diff = self.max_value - self.min_value
+            self._scale_min = self.min_value
+
+    @model_validator(mode="after")
+    def _min_lt_max(self):
+        if self.max_value <= self.min_value:
+            raise ValueError("min_value must be less than max_value")
+        return self
+
+    def normalize(self, tensor: torch.Tensor) -> torch.Tensor:
+        """Normalize a tensor in-place according to the range.
+
+        If the tensor only contains values between ``Range.min_value`` and
+        ``Range.max_value`` before, then the tensor will only contain values between 0
+        and 1 after.
+
+        Args:
+            tensor (torch.Tensor): The data to be normalized. This will occur in-place
+              and on whatever device holds the tensor.
+        """
+        if self.log_scale:
+            tensor.log10_()
+        tensor -= self._scale_min
+        tensor /= self._diff
+        return tensor
+
+    def unnormalize(self, tensor: torch.Tensor) -> torch.Tensor:
+        """Unnormalize a tensor in-place according to the range.
+
+        If the tensor only contains values between 0 and 1 before, then the tensor will
+        only contain values between ``Range.min_value`` and ``Range.max_value`` after.
+
+        Args:
+            tensor (torch.Tensor): The data to be unnormalized. This will occur
+              in-place and on whatever device holds the tensor.
+        """
+        tensor *= self._diff
+        tensor += self._scale_min
+        if self.log_scale:
+            torch.pow(10.0, tensor, out=tensor)
+        return tensor
 
 
 class RangeSet(BaseModel):
@@ -39,12 +119,12 @@ class RangeSet(BaseModel):
     phi_res: PositiveInt
     nw_res: PositiveInt
 
-    phi_range: BasicRange
-    nw_range: BasicRange
-    visc_range: BasicRange
-    bg_range: BasicRange
-    bth_range: BasicRange
-    pe_range: BasicRange
+    phi_range: Range
+    nw_range: Range
+    visc_range: Range
+    bg_range: Range
+    bth_range: Range
+    pe_range: Range
 
 
 class ModelType(BaseModel):
@@ -91,10 +171,10 @@ class ModelInstance:
         self.range_set = load_range_from_yaml(self.range_path)
 
 
-# @dataclass
-# class RepeatUnitRequest(BaseModel):
-#     length: PositiveFloat
-#     mass: PositiveFloat
+@dataclass
+class RepeatUnit(BaseModel):
+    length: PositiveFloat
+    mass: PositiveFloat
 
 
 class EvaluationCase(BaseModel):
@@ -115,8 +195,8 @@ class EvaluationCase(BaseModel):
 class EvaluationResponse(BaseModel):
     bg_only: EvaluationCase
     bth_only: EvaluationCase
-    both_bg_and_bth: EvaluationCase
-    token: str
+    bg_and_bth: EvaluationCase
+    token: str = ""
 
 
 def load_range_from_yaml(filepath: Path) -> RangeSet:
