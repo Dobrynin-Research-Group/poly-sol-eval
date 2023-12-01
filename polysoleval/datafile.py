@@ -1,15 +1,21 @@
-from typing import BinaryIO
+from collections.abc import Generator
+from io import BytesIO
+from time import sleep
+from typing import BinaryIO, Callable, Optional
+from uuid import UUID, uuid1
 
 import numpy as np
 import numpy.typing as npt
 
+GeneratorFunc = Callable[[], Generator[bytes, None, None]]
 
-def verify_datafile(
+
+def validate(
     filestream: BinaryIO,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     """Confirm that the given filestream is a comma-separated value (CSV) file with
     three columns (for concentration, molecular weight, and specific viscosity) and
-    no missing values. Returns the three columns if valid, raises a ValueError
+    has no missing values. Returns the three columns if valid, raises a ValueError
     otherwise.
 
     Args:
@@ -44,3 +50,29 @@ def verify_datafile(
 
     conc, mw, visc = data
     return conc, mw, visc
+
+
+class DatafileHandler:
+    def __init__(self):
+        self._cache: dict[UUID, BytesIO] = dict()
+
+    def write_file(self, arr: npt.NDArray) -> str:
+        b = BytesIO()
+        np.savetxt(b, arr.T, fmt="%.5e", delimiter=",")
+        uuid = uuid1()
+        self._cache[uuid] = b
+        return str(uuid)
+
+    def wait_delete(self, token: str) -> None:
+        sleep(4 * 60 * 60)  # 4 hours
+        self._cache.pop(UUID(hex=token), None)
+
+    def get_generator(self, token: str) -> Optional[GeneratorFunc]:
+        b = self._cache.get(UUID(hex=token), None)
+        if b is None:
+            return b
+
+        def iter_csv():
+            yield from b
+
+        return iter_csv
