@@ -4,12 +4,12 @@ import numpy.typing as npt
 import torch
 
 from polysoleval.response_models import RangeSet, EvaluationResponse, EvaluationCase
-from polysoleval.analysis.fitting import do_fits
+from polysoleval.analysis.fitting import PeResult, do_fits
 from polysoleval.analysis.inference import do_inferences
 from polysoleval.analysis.preprocess import *
 
 
-def compute_lamda(bg, bth, phi):
+def lamda(bg, bth, phi):
     if bth:
         return np.minimum(1, bth**4 / phi)
     elif bg:
@@ -18,7 +18,7 @@ def compute_lamda(bg, bth, phi):
         raise ValueError()
 
 
-def compute_glamdag(bg, bth, phi):
+def g_lamdag(bg, bth, phi):
     if bth and bg:
         return np.minimum(
             bg ** (0.056 / 0.528 / 0.764)
@@ -36,15 +36,13 @@ def compute_glamdag(bg, bth, phi):
 
 def create_response(
     *,
-    phi: npt.NDArray,
-    nw: npt.NDArray,
-    visc: npt.NDArray,
+    pe_bg: PeResult,
+    pe_bth: PeResult,
+    pe_combo: PeResult,
     bg: float,
     bth: float,
     rep_unit: RepeatUnit,
 ) -> EvaluationResponse:
-    pe_combo, pe_bg, pe_bth = asyncio.run(do_fits(bg, bth, phi, nw, visc))
-
     bg_case = EvaluationCase(
         bg=bg,
         bg_plateau=bg ** (1 / 3 - GOOD_EXP),
@@ -84,9 +82,7 @@ def create_response(
         concentrated_conc=phi_xx,
     )
 
-    return EvaluationResponse(
-        bg_only=bg_case, bth_only=bth_case, both_bg_and_bth=combo_case, token=""
-    )
+    return EvaluationResponse(bg_only=bg_case, bth_only=bth_case, bg_and_bth=combo_case)
 
 
 def evaluate_dataset(
@@ -156,6 +152,9 @@ def evaluate_dataset(
             bg_model, visc_normed_bg, bg_range, bth_model, visc_normed_bth, bth_range
         )
     )
+    pe_combo, pe_bg, pe_bth = asyncio.run(
+        do_fits(bg, bth, reduced_conc, degree_polym, specific_viscosity)
+    )
 
     arr = np.stack(
         [
@@ -168,24 +167,23 @@ def evaluate_dataset(
                 / reduced_conc ** (1 / (3 * GOOD_EXP - 1))
             ),
             specific_viscosity / degree_polym / reduced_conc**2,
-            degree_polym / compute_glamdag(bg, None, reduced_conc),
-            specific_viscosity * compute_lamda(bg, None, reduced_conc),
-            degree_polym / compute_glamdag(None, bth, reduced_conc),
-            specific_viscosity * compute_lamda(None, bth, reduced_conc),
-            degree_polym / compute_glamdag(bg, bth, reduced_conc),
-            specific_viscosity * compute_lamda(bg, bth, reduced_conc),
+            degree_polym / g_lamdag(bg, None, reduced_conc),
+            specific_viscosity * lamda(bg, None, reduced_conc),
+            degree_polym / g_lamdag(None, bth, reduced_conc),
+            specific_viscosity * lamda(None, bth, reduced_conc),
+            degree_polym / g_lamdag(bg, bth, reduced_conc),
+            specific_viscosity * lamda(bg, bth, reduced_conc),
         ],
         axis=0,
     )
 
-    return (
-        create_response(
-            phi=reduced_conc,
-            nw=degree_polym,
-            visc=specific_viscosity,
-            bg=bg,
-            bth=bth,
-            rep_unit=repeat_unit,
-        ),
-        arr,
+    response = create_response(
+        pe_bg=pe_bg,
+        pe_bth=pe_bth,
+        pe_combo=pe_combo,
+        bg=bg,
+        bth=bth,
+        rep_unit=repeat_unit,
     )
+
+    return response, arr
