@@ -42,13 +42,12 @@ class Range:
             self._scale_min = self.min_value
             self._diff = self.max_value - self.min_value
 
-    def normalize(self, tensor: torch.Tensor) -> None:
+    def normalize(self, tensor: torch.Tensor) -> torch.Tensor:
         """Normalize a tensor in-place according to the range.
 
         If the tensor only contains values between ``Range.min_value`` and
         ``Range.max_value`` before, then the tensor will only contain values between 0
         and 1 after.
-
 
         Args:
             tensor (torch.Tensor): The data to be normalized. This will occur in-place
@@ -58,8 +57,9 @@ class Range:
             tensor.log10_()
         tensor -= self._scale_min
         tensor /= self._diff
+        return tensor
 
-    def unnormalize(self, tensor: torch.Tensor) -> None:
+    def unnormalize(self, tensor: torch.Tensor) -> torch.Tensor:
         """Unnormalize a tensor in-place according to the range.
 
         If the tensor only contains values between 0 and 1 before, then the tensor will
@@ -73,3 +73,4 @@ class Range:
         tensor += self._scale_min
         if self.log_scale:
             torch.pow(10.0, tensor, out=tensor)
+        return tensor
