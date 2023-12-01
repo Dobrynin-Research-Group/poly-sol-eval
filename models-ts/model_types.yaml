@@ -1,11 +1,11 @@
 ---
-- name: "Inception3"
+Inception3:
   description: >
     Modified version of Inception v3 by Google for recognizing 2D images with several
     "inception blocks" that concatenate several convolutional paths
     Inception-block-based neural network for training on 2D images.
   link: https://cloud.google.com/tpu/docs/inception-v3-advanced
-- name: "Vgg13"
+Vgg13:
   description: >
     Very deep convolutional network for large-scale visual recognition of 2D images
     with 13 weight layers.
