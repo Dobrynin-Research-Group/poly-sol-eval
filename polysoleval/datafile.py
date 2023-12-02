@@ -1,7 +1,7 @@
 from collections.abc import Generator
 from io import BytesIO
 from time import sleep
-from typing import BinaryIO, Callable, Optional
+from typing import BinaryIO, Callable
 from uuid import UUID, uuid1
 
 import numpy as np
@@ -72,10 +72,8 @@ class DatafileHandler:
         sleep(4 * 60 * 60)  # 4 hours
         self._cache.pop(UUID(hex=token), None)
 
-    def get_generator(self, token: str) -> Optional[GeneratorFunc]:
-        b = self._cache.get(UUID(hex=token), None)
-        if b is None:
-            return b
+    def get_generator(self, token: str) -> GeneratorFunc:
+        b = self._cache[UUID(hex=token)]
 
         def iter_csv():
             yield from b
