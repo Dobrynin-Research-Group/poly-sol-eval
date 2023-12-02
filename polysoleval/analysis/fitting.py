@@ -186,7 +186,7 @@ async def do_fits(
     bth_only_task = asyncio.create_task(
         fit_pe_bth_only(bth, reduced_conc, degree_polym, specific_viscosity)
     )
-    pe_combo = await combo_task
-    pe_bg_only = await bg_only_task
-    pe_bth_only = await bth_only_task
+    pe_combo, pe_bg_only, pe_bth_only = await asyncio.gather(
+        combo_task, bg_only_task, bth_only_task
+    )
     return pe_combo, pe_bg_only, pe_bth_only

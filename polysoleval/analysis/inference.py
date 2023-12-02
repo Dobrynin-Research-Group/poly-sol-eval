@@ -62,6 +62,5 @@ async def do_inferences(
     bth_task = asyncio.create_task(
         inference_model(bth_model, visc_normed_bth, bth_range)
     )
-    bg = await bg_task
-    bth = await bth_task
+    bg, bth = await asyncio.gather(bg_task, bth_task)
     return bg, bth
