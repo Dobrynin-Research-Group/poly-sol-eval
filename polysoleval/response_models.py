@@ -28,7 +28,6 @@ yaml_parser = YAML(typ="safe", pure=True)
 MaybeModel = Optional[torch.nn.Module]
 
 
-@dataclass
 class Range(BaseModel):
     min_value: float
     max_value: float
@@ -65,16 +64,15 @@ class Range(BaseModel):
 
         return data
 
-    def __post_init__(self):
-        if self.log_scale:
-            self._diff = log10(self.max_value / self.min_value)
-            self._scale_min = log10(self.min_value)
-        else:
-            self._diff = self.max_value - self.min_value
-            self._scale_min = self.min_value
-
     @model_validator(mode="after")
     def _min_lt_max(self):
+        if self.log_scale:
+            self.diff = log10(self.max_value / self.min_value)
+            self.scale_min = log10(self.min_value)
+        else:
+            self.diff = self.max_value - self.min_value
+            self.scale_min = self.min_value
+
         if self.max_value <= self.min_value:
             raise ValueError("min_value must be less than max_value")
         return self
