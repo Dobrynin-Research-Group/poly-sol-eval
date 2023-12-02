@@ -85,7 +85,7 @@ def create_response(
     return EvaluationResponse(bg_only=bg_case, bth_only=bth_case, bg_and_bth=combo_case)
 
 
-def evaluate_dataset(
+async def evaluate_dataset(
     concentration_gpL: npt.NDArray,
     mol_weight_kgpmol: npt.NDArray,
     specific_viscosity: npt.NDArray,
@@ -147,13 +147,11 @@ def evaluate_dataset(
         log_scale=range_config.bth_range.log_scale,
     )
 
-    bg, bth = asyncio.run(
-        do_inferences(
-            bg_model, visc_normed_bg, bg_range, bth_model, visc_normed_bth, bth_range
-        )
+    bg, bth = await do_inferences(
+        bg_model, visc_normed_bg, bg_range, bth_model, visc_normed_bth, bth_range
     )
-    pe_combo, pe_bg, pe_bth = asyncio.run(
-        do_fits(bg, bth, reduced_conc, degree_polym, specific_viscosity)
+    pe_combo, pe_bg, pe_bth = await do_fits(
+        bg, bth, reduced_conc, degree_polym, specific_viscosity
     )
 
     arr = np.stack(

@@ -109,7 +109,7 @@ async def post_evaluate(
 
     # Do evaluation (two inferences and three curve fits)
     try:
-        result, arr = evaluate_dataset(
+        result, arr = await evaluate_dataset(
             conc,
             mw,
             visc,
