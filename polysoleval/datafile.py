@@ -60,6 +60,11 @@ class DatafileHandler:
         b = BytesIO()
         np.savetxt(b, arr.T, fmt="%.5e", delimiter=",")
         uuid = uuid1()
+
+        for _ in range(10):
+            if uuid not in self._cache:
+                break
+
         self._cache[uuid] = b
         return str(uuid)
 
