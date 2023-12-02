@@ -4,7 +4,7 @@ from typing import Annotated
 from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, status, UploadFile
 from fastapi.responses import StreamingResponse
 
-from polysoleval.datafile import *
+from polysoleval.datafile import validate
 from polysoleval.evaluate import evaluate_dataset
 from polysoleval.globals import *
 from polysoleval.response_models import *
