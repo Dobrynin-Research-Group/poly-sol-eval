@@ -120,7 +120,9 @@ async def post_evaluate(
         )
     except Exception as re:
         detail = "unexpected failure in evaluation\n" + re.args[0]
-        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail=detail)
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR, detail=detail
+        ) from re
 
     result.token = HANDLER.write_file(arr)
     background_tasks.add_task(HANDLER.wait_delete, result.token)
