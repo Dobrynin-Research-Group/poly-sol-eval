@@ -1,5 +1,4 @@
 from dataclasses import field
-import json
 from math import log10
 from pathlib import Path
 from typing import Any, Optional
@@ -32,8 +31,8 @@ class Range(BaseModel):
     min_value: float
     max_value: float
     log_scale: bool = False
-    _scale_min: float = field(init=False, repr=False)
-    _diff: float = field(init=False, repr=False)
+    _scale_min: float = 1.0
+    _diff: float = 1.0
 
     @model_validator(mode="before")
     @classmethod
@@ -67,11 +66,11 @@ class Range(BaseModel):
     @model_validator(mode="after")
     def _min_lt_max(self):
         if self.log_scale:
-            self.diff = log10(self.max_value / self.min_value)
-            self.scale_min = log10(self.min_value)
+            self._diff = log10(self.max_value / self.min_value)
+            self._scale_min = log10(self.min_value)
         else:
-            self.diff = self.max_value - self.min_value
-            self.scale_min = self.min_value
+            self._diff = self.max_value - self.min_value
+            self._scale_min = self.min_value
 
         if self.max_value <= self.min_value:
             raise ValueError("min_value must be less than max_value")
@@ -153,23 +152,6 @@ class ModelInstancesResponse(BaseModel):
     model_instances: list[RangeSet]
 
 
-@dataclass
-class ModelInstance:
-    model_type: ModelType
-    range_path: FilePath
-    bg_model_path: FilePath
-    bth_model_path: FilePath
-    bg_model: torch.nn.Module = field(init=False, repr=False, compare=False)
-    bth_model: torch.nn.Module = field(init=False, repr=False, compare=False)
-    range_set: RangeSet = field(init=False, repr=False, compare=False)
-
-    def __post_init__(self):
-        self.bg_model = torch.jit.load(self.bg_model_path)
-        self.bth_model = torch.jit.load(self.bth_model_path)
-        self.range_set = load_range_from_yaml(self.range_path)
-
-
-@dataclass
 class RepeatUnit(BaseModel):
     length: PositiveFloat
     mass: PositiveFloat
@@ -221,4 +203,26 @@ def load_range_from_yaml(filepath: Path) -> RangeSet:
     range_dict["phi_res"] = range_dict["phi_range"].pop("shape")
     range_dict["nw_res"] = range_dict["nw_range"].pop("shape")
 
-    return RangeSet.model_validate_json(json.dumps(range_dict))
+    for key in range_dict:
+        if key.endswith("_range"):
+            value = range_dict[key]
+            r = Range.model_construct(**value)
+            range_dict[key] = Range.model_validate(r)
+    tmp_range = RangeSet.model_construct(**range_dict)
+    return RangeSet.model_validate(tmp_range)
+
+
+@dataclass
+class ModelInstance:
+    model_type: ModelType
+    range_path: FilePath
+    bg_model_path: FilePath
+    bth_model_path: FilePath
+    bg_model: torch.nn.Module = field(init=False, repr=False, compare=False)
+    bth_model: torch.nn.Module = field(init=False, repr=False, compare=False)
+    range_set: RangeSet = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self):
+        self.bg_model = torch.jit.load(self.bg_model_path)
+        self.bth_model = torch.jit.load(self.bth_model_path)
+        self.range_set = load_range_from_yaml(self.range_path)
