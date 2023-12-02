@@ -1,10 +1,10 @@
-from typing import NamedTuple, Protocol, overload
+from typing import NamedTuple, overload
 
 import numpy as np
 import numpy.typing as npt
 import torch
 
-from polysoleval.response_models import Range
+from polysoleval.response_models import Range, RepeatUnit
 
 AVOGADRO_CONSTANT = 6.0221408e23
 GOOD_EXP = 0.588
@@ -13,11 +13,6 @@ GOOD_EXP = 0.588
 class Resolution(NamedTuple):
     phi: int
     nw: int
-
-
-class RepeatUnit(Protocol):
-    length: float
-    mass: float
 
 
 @overload
