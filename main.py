@@ -5,7 +5,7 @@ from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, status, Uploa
 from fastapi.responses import StreamingResponse
 
 from polysoleval.datafile import *
-from polysoleval.evaluate import evaluate_dataset, RepeatUnit
+from polysoleval.evaluate import evaluate_dataset
 from polysoleval.globals import *
 from polysoleval.response_models import *
 
@@ -102,6 +102,8 @@ async def post_evaluate(
             detail="Unsupported pair of model and range names",
         )
 
+    rep_unit = RepeatUnit(length=length, mass=mass)
+
     try:
         conc, mw, visc = validate(datafile.file)
     except Exception as e:
@@ -113,7 +115,7 @@ async def post_evaluate(
             conc,
             mw,
             visc,
-            RepeatUnit(length, mass),
+            rep_unit,
             instance.bg_model,
             instance.bth_model,
             instance.range_set,
