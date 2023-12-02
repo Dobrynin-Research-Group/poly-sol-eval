@@ -133,9 +133,9 @@ async def post_evaluate(
 
 @app.get("/datafile/{token}")
 def get_datafile(token: str) -> StreamingResponse:
-    file_generator = HANDLER.get_generator(token)
-
-    if file_generator is None:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="data not found")
+    try:
+        file_generator = HANDLER.get_generator(token)
+    except KeyError as ke:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="data not found") from ke
 
     return StreamingResponse(file_generator())
