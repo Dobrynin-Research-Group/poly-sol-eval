@@ -95,21 +95,20 @@ async def evaluate_dataset(
     """Perform an evaluation of experimental data given one previously trained PyTorch
     model for each of the :math:`B_g` and :math:`B_{th}` parameters.
 
-
     Args:
-        concentration_gpL (npt.NDArray): Experimental concentration data in units of
-          grams per mole (1D numpy array).
-        mol_weight_kgpmol (npt.NDArray): Experimental molecular weight data in units of
-          kilograms per mole (1D numpy array).
-        specific_viscosity (npt.NDArray): Experimental specific viscosity data in
-          dimensionless units (1D numpy array).
+        concentration_gpL (numpy.ndarray, 1D): Experimental concentration data in units
+          of grams per mole.
+        mol_weight_kgpmol (numpy.ndarray, 1D): Experimental molecular weight data in
+          units of kilograms per mole.
+        specific_viscosity (numpy.ndarray, 1D): Experimental specific viscosity data in
+          dimensionless units.
         repeat_unit (RepeatUnit): The projection length and molar mass of the polymer
           repeat unit.
         bg_model (torch.nn.Module): A pretrained model for evaluating the :math:`B_g`
           parameter.
         bth_model (torch.nn.Module): A pretrained model for evaluating the :math:`B_th`
           parameter.
-        range_config (RangeResponse): Used to homogenize inferencing of the models by
+        range_config (RangeSet): Used to homogenize inferencing of the models by
           normalizing the experimental data in the same manner as the procedural data
           that the models were trained on.
 
