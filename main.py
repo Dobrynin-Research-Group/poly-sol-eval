@@ -87,8 +87,8 @@ def get_model_instances(model_type: str) -> ModelInstancesResponse:
 
 @app.post("/evaluate")
 async def post_evaluate(
-    ml_model_name: Annotated[str, Form(pattern="[\\w\\d]+")],
-    range_name: Annotated[str, Form(pattern="[\\w\\d]+")],
+    ml_model_name: Annotated[str, Form()],
+    range_name: Annotated[str, Form()],
     length: Annotated[float, Form(gt=0.0)],
     mass: Annotated[float, Form(gt=0.0)],
     datafile: UploadFile,
