@@ -1,7 +1,6 @@
 services:
   web:
     build: .
-    # build: .
     # restart: always
     working_dir: /code
     networks:
