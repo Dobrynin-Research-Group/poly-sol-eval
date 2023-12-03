@@ -131,11 +131,13 @@ async def post_evaluate(
     return result
 
 
-@app.get("/datafile/{token}")
+@app.get(
+    "/datafile/{token}", responses={200: {"content": {"text/plain; charset=utf-8": {}}}}
+)
 def get_datafile(token: str) -> StreamingResponse:
     try:
         file_generator = HANDLER.get_generator(token)
     except KeyError as ke:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="data not found") from ke
 
-    return StreamingResponse(file_generator())
+    return StreamingResponse(file_generator(), media_type="text/plain")

@@ -1,6 +1,7 @@
+from asyncio import sleep
 from collections.abc import Generator
+from datetime import timedelta
 from io import BytesIO
-from time import sleep
 from typing import BinaryIO, Callable
 from uuid import UUID, uuid1
 
@@ -58,7 +59,7 @@ class DatafileHandler:
 
     def write_file(self, arr: npt.NDArray) -> str:
         b = BytesIO()
-        np.savetxt(b, arr.T, fmt="%.5e", delimiter=",")
+        np.savetxt(b, arr.T, fmt="%.5e", delimiter=",", encoding="utf-8")
         uuid = uuid1()
 
         for _ in range(10):
@@ -68,8 +69,10 @@ class DatafileHandler:
         self._cache[uuid] = b
         return str(uuid)
 
-    def wait_delete(self, token: str) -> None:
-        sleep(4 * 60 * 60)  # 4 hours
+    async def wait_delete(
+        self, token: str, wait: timedelta = timedelta(hours=4)
+    ) -> None:
+        await sleep(wait.total_seconds())
         self._cache.pop(UUID(hex=token), None)
 
     def get_generator(self, token: str) -> GeneratorFunc:
