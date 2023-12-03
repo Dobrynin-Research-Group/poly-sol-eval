@@ -8,9 +8,9 @@
     1. resolve naming issues between machine learning/pytorch models and pydantic models
     1. rename response_models?
     1. separate response_models internal pydantic models?
-    1. start documentation for site users
 
 ## Other necessary changes
+1. start documentation for site users
 1. identify "best" trained ML models of 3 from paper
 1. Documentation
     1. update documentation in evaluate and analysis
