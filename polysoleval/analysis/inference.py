@@ -1,4 +1,4 @@
-import asyncio
+from asyncio import create_task, gather
 
 import torch
 
@@ -58,9 +58,7 @@ async def do_inferences(
         tuple[float, float]: The estimated values of :math:`B_g` and :math:`B_{th}`,
           respectively.
     """
-    bg_task = asyncio.create_task(inference_model(bg_model, visc_normed_bg, bg_range))
-    bth_task = asyncio.create_task(
-        inference_model(bth_model, visc_normed_bth, bth_range)
-    )
-    bg, bth = await asyncio.gather(bg_task, bth_task)
+    bg_task = create_task(inference_model(bg_model, visc_normed_bg, bg_range))
+    bth_task = create_task(inference_model(bth_model, visc_normed_bth, bth_range))
+    bg, bth = await gather(bg_task, bth_task)
     return bg, bth
