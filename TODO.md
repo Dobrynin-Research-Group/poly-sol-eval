@@ -1,6 +1,9 @@
 # To Do
 
 ## Before next merge
+~~1. DatafileHandler~~
+    ~~1. add task handler/queue to DatafileHandler~~
+    ~~1. include validate in DatafileHandler?~~
 1. response_models
     1. resolve naming issues between machine learning/pytorch models and pydantic models
     1. rename response_models?
