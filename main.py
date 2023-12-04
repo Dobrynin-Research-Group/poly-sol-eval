@@ -1,12 +1,13 @@
 from contextlib import asynccontextmanager
 from typing import Annotated
 
-from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, status, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import BackgroundTasks, FastAPI, Form, UploadFile
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from polysoleval.models import *
 from polysoleval.datafile import validate
 from polysoleval.evaluate import evaluate_dataset
+from polysoleval.exceptions import PSSTException
 from polysoleval.globals import *
 from polysoleval import responses
 
@@ -54,7 +55,7 @@ app = FastAPI(lifespan=lifespan)
 
 @app.get("/")
 def root():
-    return HTTPException(status.HTTP_200_OK)
+    return JSONResponse({})
 
 
 @app.get("/models")
@@ -77,16 +78,16 @@ def get_model_instances(neuralnet_name: str) -> responses.ValidRangeSets:
     Returns:
         _type_: _description_
     """
+    if neuralnet_name not in NEURALNET_TYPES.keys():
+        raise PSSTException.InvalidNeuralNet
+
     valid_sets = [
         v.range_set for k, v in NEURALNET_PAIRS.items() if k.net_name == neuralnet_name
     ]
     if valid_sets:
         return responses.ValidRangeSets(range_sets=valid_sets)
 
-    raise HTTPException(
-        status.HTTP_404_NOT_FOUND,
-        detail="No pre-trained networks found for the chosen neural net type",
-    )
+    raise PSSTException.NeuralNetNotFound
 
 
 @app.post("/evaluate")
@@ -101,17 +102,14 @@ async def post_evaluate(
     # Validate first
     instance = NEURALNET_PAIRS.get(NetRangePairNames(ml_model_name, range_name), None)
     if instance is None:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            detail="Unsupported pair of model and range names",
-        )
+        raise PSSTException.InvalidNeuralNetPair
 
     rep_unit = RepeatUnit(length=length, mass=mass)
 
     try:
         conc, mw, visc = validate(datafile.file)
     except Exception as e:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, e.args[0]) from e
+        raise PSSTException.InvalidDatafile from e
 
     # Do evaluation (two inferences and three curve fits)
     try:
@@ -126,9 +124,7 @@ async def post_evaluate(
         )
     except Exception as re:
         detail = "unexpected failure in evaluation\n" + re.args[0]
-        raise HTTPException(
-            status.HTTP_500_INTERNAL_SERVER_ERROR, detail=detail
-        ) from re
+        raise PSSTException.EvaluationError from re
 
     result.token = HANDLER.write_file(arr)
     background_tasks.add_task(HANDLER.wait_delete, result.token)
@@ -143,8 +139,6 @@ def get_datafile(token: str) -> StreamingResponse:
     try:
         file_generator = HANDLER.get_generator(token)
     except KeyError as ke:
-        raise HTTPException(
-            status.HTTP_404_NOT_FOUND, detail="datafile not found"
-        ) from ke
+        raise PSSTException.DatafileResultNotFound from ke
 
     return StreamingResponse(file_generator(), media_type="text/plain")
