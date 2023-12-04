@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 
-from polysoleval.models import NeuralNetType, RangeSet, EvaluationCase
+from polysoleval.conversions import phi_to_conc
 
 
 class NeuralNetTypes(BaseModel):
