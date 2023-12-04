@@ -1,4 +1,2 @@
-modelpath="models-ts" \
-rangepath="ranges" \
-tmppath="tmp" \
+bash .env
 uvicorn main:app
