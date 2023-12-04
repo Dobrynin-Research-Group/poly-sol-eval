@@ -5,7 +5,7 @@ import numpy.typing as npt
 import torch
 
 from polysoleval.globals import *
-from polysoleval.models import PeResult, Range, RangeSet, RepeatUnit
+from polysoleval.models import PeResult, RangeSet, RepeatUnit
 from polysoleval.analysis.fitting import do_fits
 from polysoleval.analysis.inference import do_inferences
 from polysoleval.analysis.preprocess import *
