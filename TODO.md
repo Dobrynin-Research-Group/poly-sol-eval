@@ -1,13 +1,17 @@
 # To Do
 
 ## Before next merge
-~~1. DatafileHandler~~
-    ~~1. add task handler/queue to DatafileHandler~~
-    ~~1. include validate in DatafileHandler?~~
-1. response_models
-    1. resolve naming issues between machine learning/pytorch models and pydantic models
-    1. rename response_models?
-    1. separate response_models internal pydantic models?
+1. ~~DatafileHandler~~
+    1. ~~add task handler/queue to DatafileHandler~~
+    1. ~~include validate in DatafileHandler?~~
+1. ~~response_models~~
+    1. ~~resolve naming issues between machine learning/pytorch models and pydantic models~~
+    1. ~~rename response_models?~~
+    1. ~~separate response_models internal pydantic models?~~
+1. Exception module
+    1. create base exception for package (inherit from HTTPException)
+    1. identify all possible exceptions/error responses (enums with values?)
+    1. substitute all exceptions into main.py
 
 ## Other necessary changes
 1. start documentation for site users
