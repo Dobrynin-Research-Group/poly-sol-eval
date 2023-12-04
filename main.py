@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 from typing import Annotated
 
 from fastapi import FastAPI, Form, UploadFile
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 
 from polysoleval.models import *
 from polysoleval.datafile import validate
@@ -54,9 +54,9 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 
 
-@app.get("/")
+@app.get("/", status_code=200)
 def root():
-    return JSONResponse({})
+    return
 
 
 @app.get("/models")
