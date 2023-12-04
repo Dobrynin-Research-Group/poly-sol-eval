@@ -4,10 +4,20 @@ import numpy as np
 import numpy.typing as npt
 import torch
 
+from polysoleval.globals import *
+from polysoleval.models import PeResult, Range, RangeSet, RepeatUnit
 from polysoleval.analysis.fitting import do_fits
 from polysoleval.analysis.inference import do_inferences
 from polysoleval.analysis.preprocess import *
-from polysoleval import responses
+
+
+class Results(NamedTuple):
+    bg: float
+    bth: float
+    pe_combo: PeResult
+    pe_bg_only: PeResult
+    pe_bth_only: PeResult
+    array: npt.NDArray
 
 
 def lamda(bg, bth, phi):
@@ -35,59 +45,6 @@ def g_lamdag(bg, bth, phi):
         raise ValueError()
 
 
-def create_response(
-    *,
-    pe_bg: PeResult,
-    pe_bth: PeResult,
-    pe_combo: PeResult,
-    bg: float,
-    bth: float,
-    rep_unit: RepeatUnit,
-) -> responses.Evaluation:
-    bg_case = EvaluationCase(
-        bg=bg,
-        bg_plateau=bg ** (1 / 3 - GOOD_EXP),
-        pe=pe_bg.opt,
-        pe_variance=pe_bg.var,
-    )
-
-    kuhn_length = rep_unit.length / bth**2
-    phi_xx = bth**4
-    bth_case = EvaluationCase(
-        bth=bth,
-        bth_plateau=bth ** (1 / 6),
-        pe=pe_bth.opt,
-        pe_variance=pe_bth.var,
-        kuhn_length=kuhn_length,
-        concentrated_conc=phi_to_conc(phi_xx, rep_unit),
-    )
-
-    phi_th = bth**3 * (bth / bg) ** (1 / (2 * GOOD_EXP - 1))
-    thermal_blob_size = rep_unit.length * bth**2 / phi_th
-    dp_of_thermal_blob = (bth**3 / phi_th) ** 2
-    thermal_blob_conc = phi_to_conc(phi_th, rep_unit)
-    excluded_volume = phi_th * kuhn_length**3
-
-    combo_case = EvaluationCase(
-        bg=bg,
-        bth=bth,
-        bg_plateau=bg ** (1 / 3 - GOOD_EXP),
-        bth_plateau=bth ** (-1 / 6),
-        pe=pe_combo.opt,
-        pe_variance=pe_combo.var,
-        kuhn_length=kuhn_length,
-        thermal_blob_size=thermal_blob_size,
-        dp_of_thermal_blob=dp_of_thermal_blob,
-        excluded_volume=excluded_volume,
-        thermal_blob_conc=thermal_blob_conc,
-        concentrated_conc=phi_xx,
-    )
-
-    return responses.Evaluation(
-        bg_only=bg_case, bth_only=bth_case, bg_and_bth=combo_case
-    )
-
-
 async def evaluate_dataset(
     concentration_gpL: npt.NDArray,
     mol_weight_kgpmol: npt.NDArray,
@@ -96,7 +53,7 @@ async def evaluate_dataset(
     bg_model: torch.nn.Module,
     bth_model: torch.nn.Module,
     range_config: RangeSet,
-) -> tuple[responses.Evaluation, npt.NDArray]:
+) -> Results:
     """Perform an evaluation of experimental data given one previously trained PyTorch
     model for each of the :math:`B_g` and :math:`B_{th}` parameters.
 
@@ -159,11 +116,7 @@ async def evaluate_dataset(
             reduced_conc,
             degree_polym,
             specific_viscosity,
-            (
-                specific_viscosity
-                / degree_polym
-                / reduced_conc ** (1 / (3 * GOOD_EXP - 1))
-            ),
+            specific_viscosity / degree_polym / reduced_conc ** (1 / (3 * NU - 1)),
             specific_viscosity / degree_polym / reduced_conc**2,
             degree_polym / g_lamdag(bg, None, reduced_conc),
             specific_viscosity * lamda(bg, None, reduced_conc),
@@ -177,4 +130,4 @@ async def evaluate_dataset(
 
     pe_combo, pe_bg, pe_bth = await do_fits(arr)
 
-    return response, arr
+    return Results(bg, bth, pe_combo, pe_bg, pe_bth, arr)

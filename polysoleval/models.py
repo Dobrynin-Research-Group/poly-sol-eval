@@ -149,6 +149,11 @@ class RepeatUnit(BaseModel):
     mass: PositiveFloat
 
 
+class PeResult(BaseModel):
+    value: PositiveFloat
+    error: PositiveFloat
+
+
 class EvaluationCase(BaseModel):
     bg: Optional[PositiveFloat] = None
     bth: Optional[PositiveFloat] = None

@@ -113,7 +113,7 @@ async def post_evaluate(
 
     # Do evaluation (two inferences and three curve fits)
     try:
-        result, arr = await evaluate_dataset(
+        results = await evaluate_dataset(
             conc,
             mw,
             visc,
@@ -126,9 +126,18 @@ async def post_evaluate(
         detail = "unexpected failure in evaluation\n" + re.args[0]
         raise PSSTException.EvaluationError from re
 
-    result.token = HANDLER.write_file(arr)
-    background_tasks.add_task(HANDLER.wait_delete, result.token)
-    return result
+    eval_response = responses.Evaluation.from_params(
+        bg=results.bg,
+        bth=results.bth,
+        pe_combo=results.pe_combo,
+        pe_bg=results.pe_bg_only,
+        pe_bth=results.pe_bth_only,
+        rep_unit=rep_unit,
+    )
+
+    eval_response.token = HANDLER.write_file(results.array)
+    background_tasks.add_task(HANDLER.wait_delete, eval_response.token)
+    return eval_response
 
 
 @app.get(
