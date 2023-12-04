@@ -4,27 +4,27 @@ from fastapi import HTTPException, status
 
 
 class PSSTException(HTTPException, Enum):
-    InvalidNeuralNet = HTTPException(
+    InvalidNeuralNet = (
         status.HTTP_400_BAD_REQUEST,
-        detail="invalid neural network type",
+        "invalid neural network type",
     )
-    NeuralNetNotFound = HTTPException(
+    NeuralNetNotFound = (
         status.HTTP_404_NOT_FOUND,
-        detail="no pre-trained neural networks of this type",
+        "no pre-trained neural networks of this type",
     )
-    InvalidNeuralNetPair = HTTPException(
+    InvalidNeuralNetPair = (
         status.HTTP_400_BAD_REQUEST,
-        detail="invalid combination of neural network and range set",
+        "invalid combination of neural network and range set",
     )
-    InvalidDatafile = HTTPException(
+    InvalidDatafile = (
         status.HTTP_400_BAD_REQUEST,
-        detail="uploaded datafile is improperly formatted",
+        "uploaded datafile is improperly formatted",
     )
-    EvaluationError = HTTPException(
+    EvaluationError = (
         status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail="there was an issue with the evaluation",
+        "there was an issue with the evaluation",
     )
-    DatafileResultNotFound = HTTPException(
+    DatafileResultNotFound = (
         status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail="result data not found",
+        "result data not found",
     )
