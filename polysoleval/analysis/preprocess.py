@@ -4,7 +4,7 @@ import numpy as np
 import numpy.typing as npt
 import torch
 
-from polysoleval.response_models import Range, RepeatUnit
+from polysoleval.models import Range, RepeatUnit
 
 AVOGADRO_CONSTANT = 6.0221408e23
 GOOD_EXP = 0.588

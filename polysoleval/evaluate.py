@@ -1,10 +1,11 @@
 import numpy.typing as npt
 import torch
 
-from polysoleval.response_models import RangeSet, EvaluationResponse, EvaluationCase
+from polysoleval.models import RangeSet, EvaluationCase
 from polysoleval.analysis.fitting import PeResult, do_fits
 from polysoleval.analysis.inference import do_inferences
 from polysoleval.analysis.preprocess import *
+from polysoleval import responses
 
 
 def lamda(bg, bth, phi):
@@ -40,7 +41,7 @@ def create_response(
     bg: float,
     bth: float,
     rep_unit: RepeatUnit,
-) -> EvaluationResponse:
+) -> responses.Evaluation:
     bg_case = EvaluationCase(
         bg=bg,
         bg_plateau=bg ** (1 / 3 - GOOD_EXP),
@@ -80,7 +81,9 @@ def create_response(
         concentrated_conc=phi_xx,
     )
 
-    return EvaluationResponse(bg_only=bg_case, bth_only=bth_case, bg_and_bth=combo_case)
+    return responses.Evaluation(
+        bg_only=bg_case, bth_only=bth_case, bg_and_bth=combo_case
+    )
 
 
 async def evaluate_dataset(
@@ -91,7 +94,7 @@ async def evaluate_dataset(
     bg_model: torch.nn.Module,
     bth_model: torch.nn.Module,
     range_config: RangeSet,
-) -> tuple[EvaluationResponse, npt.NDArray]:
+) -> tuple[responses.Evaluation, npt.NDArray]:
     """Perform an evaluation of experimental data given one previously trained PyTorch
     model for each of the :math:`B_g` and :math:`B_{th}` parameters.
 

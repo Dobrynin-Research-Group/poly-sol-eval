@@ -1,15 +1,21 @@
 from os import environ
 from pathlib import Path
+from typing import NamedTuple
 
+from polysoleval.models import NeuralNetPair, NeuralNetType
 from polysoleval.datafile import DatafileHandler
-from polysoleval.response_models import ModelInstance, ModelType
 
 
-MODELPATH = Path(environ["modelpath"])
+class NetRangePairNames(NamedTuple):
+    net_name: str
+    range_name: str
+
+
+NEURALNETPATH = Path(environ["modelpath"])
 RANGEPATH = Path(environ["rangepath"])
 TMPPATH = Path(environ["tmppath"])
 
 HANDLER = DatafileHandler()
 
-MODEL_TYPES: dict[str, ModelType] = dict()
-MODEL_INSTANCES: dict[tuple[str, str], ModelInstance] = dict()
+NEURALNET_TYPES: dict[str, NeuralNetType] = dict()
+NEURALNET_PAIRS: dict[NetRangePairNames, NeuralNetPair] = dict()

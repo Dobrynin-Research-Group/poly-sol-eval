@@ -2,7 +2,7 @@ from asyncio import create_task, gather
 
 import torch
 
-from polysoleval.response_models import Range
+from polysoleval.models import Range
 
 
 async def inference_model(
