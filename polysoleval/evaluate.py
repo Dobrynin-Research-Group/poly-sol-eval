@@ -1,8 +1,7 @@
 import numpy.typing as npt
 import torch
 
-from polysoleval.models import RangeSet, EvaluationCase
-from polysoleval.analysis.fitting import PeResult, do_fits
+from polysoleval.analysis.fitting import do_fits
 from polysoleval.analysis.inference import do_inferences
 from polysoleval.analysis.preprocess import *
 from polysoleval import responses
@@ -150,9 +149,6 @@ async def evaluate_dataset(
     bg, bth = await do_inferences(
         bg_model, visc_normed_bg, bg_range, bth_model, visc_normed_bth, bth_range
     )
-    pe_combo, pe_bg, pe_bth = await do_fits(
-        bg, bth, reduced_conc, degree_polym, specific_viscosity
-    )
 
     arr = np.stack(
         [
@@ -175,13 +171,6 @@ async def evaluate_dataset(
         axis=0,
     )
 
-    response = create_response(
-        pe_bg=pe_bg,
-        pe_bth=pe_bth,
-        pe_combo=pe_combo,
-        bg=bg,
-        bth=bth,
-        rep_unit=repeat_unit,
-    )
+    pe_combo, pe_bg, pe_bth = await do_fits(arr)
 
     return response, arr
