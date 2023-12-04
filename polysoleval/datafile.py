@@ -1,7 +1,7 @@
-from asyncio import sleep
 from collections.abc import Generator
 from datetime import timedelta
 from io import BytesIO
+from time import time
 from typing import BinaryIO, Callable
 from uuid import UUID, uuid1
 
@@ -56,6 +56,7 @@ def validate(
 class DatafileHandler:
     def __init__(self):
         self._cache: dict[UUID, BytesIO] = dict()
+        self._expiration: dict[UUID, float] = dict()
 
     def write_file(self, arr: npt.NDArray) -> str:
         b = BytesIO()
@@ -67,13 +68,15 @@ class DatafileHandler:
                 break
 
         self._cache[uuid] = b
+        self._expiration[uuid] = time() + timedelta(hours=4).total_seconds()
         return str(uuid)
 
-    async def wait_delete(
-        self, token: str, wait: timedelta = timedelta(hours=4)
-    ) -> None:
-        await sleep(wait.total_seconds())
-        self._cache.pop(UUID(hex=token), None)
+    def check_delete(self) -> None:
+        now = time()
+        for uuid in self._cache:
+            if uuid not in self._expiration or now >= self._expiration[uuid]:
+                self._expiration.pop(uuid, None)
+                self._cache.pop(uuid)
 
     def get_generator(self, token: str) -> GeneratorFunc:
         b = self._cache[UUID(hex=token)]
@@ -82,3 +85,7 @@ class DatafileHandler:
             yield from b
 
         return iter_csv
+
+    def clear(self) -> None:
+        self._cache.clear()
+        self._expiration.clear()

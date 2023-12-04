@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 from typing import Annotated
 
-from fastapi import BackgroundTasks, FastAPI, Form, UploadFile
+from fastapi import FastAPI, Form, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from polysoleval.models import *
@@ -48,6 +48,7 @@ async def lifespan(app: FastAPI):
     # clear ML models
     NEURALNET_TYPES.clear()
     NEURALNET_PAIRS.clear()
+    HANDLER.clear()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -97,8 +98,9 @@ async def post_evaluate(
     length: Annotated[float, Form(gt=0.0)],
     mass: Annotated[float, Form(gt=0.0)],
     datafile: UploadFile,
-    background_tasks: BackgroundTasks,
 ) -> responses.Evaluation:
+    HANDLER.check_delete()
+
     # Validate first
     instance = NEURALNET_PAIRS.get(NetRangePairNames(ml_model_name, range_name), None)
     if instance is None:
@@ -136,7 +138,6 @@ async def post_evaluate(
     )
 
     eval_response.token = HANDLER.write_file(results.array)
-    background_tasks.add_task(HANDLER.wait_delete, eval_response.token)
     return eval_response
 
 
@@ -149,5 +150,7 @@ def get_datafile(token: str) -> StreamingResponse:
         file_generator = HANDLER.get_generator(token)
     except KeyError as ke:
         raise PSSTException.DatafileResultNotFound from ke
+    finally:
+        HANDLER.check_delete()
 
     return StreamingResponse(file_generator(), media_type="text/plain")
