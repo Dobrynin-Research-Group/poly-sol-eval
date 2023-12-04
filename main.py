@@ -1,168 +1,156 @@
 from contextlib import asynccontextmanager
-from os import environ
-from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
-from fastapi import FastAPI, Form, HTTPException, UploadFile, status
+from fastapi import FastAPI, Form, UploadFile
+from fastapi.responses import StreamingResponse
 
-from polysoleval.evaluate import create_result, evaluate_dataset, RepeatUnit
-from polysoleval.load import *
-from polysoleval.response_models import *
-from polysoleval.verify import verify_datafile
-
-
-MODELPATH = Path(environ["modelpath"])
-RANGEPATH = Path(environ["rangepath"])
-TMPPATH = Path(environ["tmppath"])
-
-RANGES: dict[str, RangeResponse] = dict()
-MODELS: dict[str, ModelResponse] = dict()
-ModelRangeSpec = tuple[str, str]
-BgBthModels = tuple[MaybeModel, MaybeModel]
-ML_MODELS: dict[ModelRangeSpec, BgBthModels] = dict()
+from polysoleval.models import *
+from polysoleval.datafile import validate
+from polysoleval.evaluate import evaluate_dataset
+from polysoleval.exceptions import PSSTException
+from polysoleval.globals import *
+from polysoleval import responses
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # load range configs
-    for range_file in RANGEPATH.glob("*.yaml"):
-        range_ = load_range_from_yaml(range_file)
-        RANGES[range_.name] = range_
-
     # load model descriptions
-    global MODELS
-    MODELS = {m.name: m for m in load_models_from_yaml(MODELPATH / "models.yaml")}
+    global NEURALNET_TYPES
+    NEURALNET_TYPES = {
+        m.name: m
+        for m in NeuralNetType.all_from_yaml(NEURALNETPATH / "model_types.yaml")
+    }
 
     # load ML models
-    for model_name in MODELS:
-        for range_name in RANGES:
-            bg_fp = MODELPATH / f"{model_name}-{range_name}-Bg.pt"
-            bth_fp = MODELPATH / f"{model_name}-{range_name}-Bth.pt"
-            bg_model = load_model_file(bg_fp)
-            bth_model = load_model_file(bth_fp)
-            key = (model_name, range_name)
-            ML_MODELS[key] = (bg_model, bth_model)
+    for bg_net_path in NEURALNETPATH.glob("*-Bg.pt"):
+        net_name, range_name, _ = bg_net_path.stem.split("-")
+
+        net_type = NEURALNET_TYPES.get(net_name, None)
+        if net_type is None:
+            continue
+
+        bth_net_path = bg_net_path.with_stem(f"{net_name}-{range_name}-Bth")
+        if not bth_net_path.is_file():
+            continue
+
+        range_path = RANGEPATH / f"{range_name}.yaml"
+        if not range_path.is_file():
+            continue
+        NEURALNET_PAIRS[NetRangePairNames(net_name, range_name)] = NeuralNetPair(
+            neuralnet_type=net_type,
+            range_path=range_path,
+            bg_net_path=bg_net_path,
+            bth_net_path=bth_net_path,
+        )
 
     yield
 
     # clear ML models
-    RANGES.clear()
-    MODELS.clear()
-    ML_MODELS.clear()
+    NEURALNET_TYPES.clear()
+    NEURALNET_PAIRS.clear()
+    HANDLER.clear()
 
 
 app = FastAPI(lifespan=lifespan)
 
 
-def get_model_range_pairs(
-    model_name: Optional[str] = None, range_name: Optional[str] = None
-):
-    if model_name is None and range_name is None:
-        raise ValueError("either model_name or range_name must be given")
-
-    return_names: list[tuple[ModelResponse, RangeResponse]] = list()
-
-    for m, r in ML_MODELS.keys():
-        if r == range_name or m == model_name:
-            model_ = MODELS[m]
-            range_ = RANGES[r]
-            return_names.append((model_, range_))
-
-    return return_names
-
-
-@app.get("/")
-async def root():
-    return {"model_names": [m for m in MODELS], "ranges": [r for r in RANGES.values()]}
+@app.get("/", status_code=200)
+def root():
+    return
 
 
 @app.get("/models")
-async def get_models():
-    return {"model_names": [m for m in MODELS]}
+def get_models() -> responses.NeuralNetTypes:
+    """Return every model type.
+
+    Returns:
+        _type_: _description_
+    """
+    return responses.NeuralNetTypes(neuralnet_types=list(NEURALNET_TYPES.values()))
 
 
-@app.get("/models/{model_name}")
-async def get_model_by_name(model_name: str):
-    pairs = get_model_range_pairs(model_name=model_name)
-    if pairs:
-        return {"pairs": [{"model": m, "range": r} for m, r in pairs]}
-    raise HTTPException(status.HTTP_404_NOT_FOUND, detail="model name not found")
+@app.get("/models/{neuralnet_name}")
+def get_model_instances(neuralnet_name: str) -> responses.ValidRangeSets:
+    """Return all model instances of the given model type.
 
+    Args:
+        model_type (str): _description_
 
-@app.get("/ranges")
-async def get_ranges():
-    return {"ranges": [r for r in RANGES.values()]}
+    Returns:
+        _type_: _description_
+    """
+    if neuralnet_name not in NEURALNET_TYPES.keys():
+        raise PSSTException.InvalidNeuralNet
 
+    valid_sets = [
+        v.range_set for k, v in NEURALNET_PAIRS.items() if k.net_name == neuralnet_name
+    ]
+    if valid_sets:
+        return responses.ValidRangeSets(range_sets=valid_sets)
 
-@app.get("/ranges/{range_name}")
-async def get_range_by_name(range_name: str):
-    pairs = get_model_range_pairs(range_name=range_name)
-    if pairs:
-        return {"pairs": [{"model": m, "range": r} for m, r in pairs]}
-    raise HTTPException(status.HTTP_404_NOT_FOUND, detail="range name not found")
-
-
-@app.post("/new-parameters")
-async def post_new_parameters(params: InputParameters):
-    if params.rep_unit_length is None:
-        raise HTTPException(
-            status.HTTP_411_LENGTH_REQUIRED,
-            detail="rep_unit_length (repeat unit length) required",
-        )
-    return create_result(
-        bg=params.bg,
-        bth=params.bth,
-        pe=params.pe,
-        pe_variance=params.pe_variance,
-        rep_unit=RepeatUnit(params.rep_unit_length, params.rep_unit_mass),
-    )
+    raise PSSTException.NeuralNetNotFound
 
 
 @app.post("/evaluate")
 async def post_evaluate(
-    ml_model_name: Annotated[str, Form(pattern="[\\w\\d]+")],
-    range_name: Annotated[str, Form(pattern="[\\w\\d]+")],
+    ml_model_name: Annotated[str, Form()],
+    range_name: Annotated[str, Form()],
     length: Annotated[float, Form(gt=0.0)],
     mass: Annotated[float, Form(gt=0.0)],
     datafile: UploadFile,
-):
+) -> responses.Evaluation:
+    HANDLER.check_delete()
+
     # Validate first
-    if ml_model_name not in MODELS:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, detail="Unrecognized model name"
-        )
-    if range_name not in RANGES:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST, detail="Unrecognized range name"
-        )
+    instance = NEURALNET_PAIRS.get(NetRangePairNames(ml_model_name, range_name), None)
+    if instance is None:
+        raise PSSTException.InvalidNeuralNetPair
 
-    bg_model, bth_model = ML_MODELS.get((ml_model_name, range_name), (None, None))
-    if bg_model is None or bth_model is None:
-        raise HTTPException(
-            status.HTTP_400_BAD_REQUEST,
-            detail="Unsupported pair of model and range names",
-        )
-
-    range_response = RANGES[range_name]
+    rep_unit = RepeatUnit(length=length, mass=mass)
 
     try:
-        conc, mw, visc = verify_datafile(datafile.file)
+        conc, mw, visc = validate(datafile.file)
     except Exception as e:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, e.args[0]) from e
+        raise PSSTException.InvalidDatafile from e
 
     # Do evaluation (two inferences and three curve fits)
     try:
-        result = await evaluate_dataset(
+        results = await evaluate_dataset(
             conc,
             mw,
             visc,
-            RepeatUnit(length, mass),
-            bg_model,
-            bth_model,
-            range_response,
+            rep_unit,
+            instance.bg_net,
+            instance.bth_net,
+            instance.range_set,
         )
     except Exception as re:
         detail = "unexpected failure in evaluation\n" + re.args[0]
-        raise HTTPException(status.HTTP_417_EXPECTATION_FAILED, detail=detail)
+        raise PSSTException.EvaluationError from re
 
-    return result
+    eval_response = responses.Evaluation.from_params(
+        bg=results.bg,
+        bth=results.bth,
+        pe_combo=results.pe_combo,
+        pe_bg=results.pe_bg_only,
+        pe_bth=results.pe_bth_only,
+        rep_unit=rep_unit,
+    )
+
+    eval_response.token = HANDLER.write_file(results.array)
+    return eval_response
+
+
+@app.get(
+    "/datafile/{token}",
+    responses={200: {"content": {"text/plain; charset=utf-8": {}}}},
+)
+def get_datafile(token: str) -> StreamingResponse:
+    try:
+        file_generator = HANDLER.get_generator(token)
+    except KeyError as ke:
+        raise PSSTException.DatafileResultNotFound from ke
+    finally:
+        HANDLER.check_delete()
+
+    return StreamingResponse(file_generator(), media_type="text/plain")

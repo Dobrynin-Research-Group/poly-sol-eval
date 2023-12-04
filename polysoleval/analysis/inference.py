@@ -1,8 +1,8 @@
-import asyncio
+from asyncio import create_task, gather
 
 import torch
 
-from polysoleval.range import Range
+from polysoleval.models import Range
 
 
 async def inference_model(
@@ -29,7 +29,7 @@ async def inference_model(
 
     b_range.unnormalize(pred)
 
-    return pred.squeeze().item()
+    return pred.item()
 
 
 async def do_inferences(
@@ -58,10 +58,7 @@ async def do_inferences(
         tuple[float, float]: The estimated values of :math:`B_g` and :math:`B_{th}`,
           respectively.
     """
-    bg_task = asyncio.create_task(inference_model(bg_model, visc_normed_bg, bg_range))
-    bth_task = asyncio.create_task(
-        inference_model(bth_model, visc_normed_bth, bth_range)
-    )
-    bg = await bg_task
-    bth = await bth_task
+    bg_task = create_task(inference_model(bg_model, visc_normed_bg, bg_range))
+    bth_task = create_task(inference_model(bth_model, visc_normed_bth, bth_range))
+    bg, bth = await gather(bg_task, bth_task)
     return bg, bth

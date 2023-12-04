@@ -1,94 +1,13 @@
-from typing import NamedTuple, overload
-
 import numpy as np
 import numpy.typing as npt
 import torch
 
-from polysoleval.response_models import BasicRange
-from polysoleval.range import Range
-
-AVOGADRO_CONSTANT = 6.0221408e23
-GOOD_EXP = 0.588
+from polysoleval.globals import NU3_1
+from polysoleval.models import Range, RepeatUnit
+from polysoleval.conversions import conc_to_phi
 
 
-class Resolution(NamedTuple):
-    phi: int
-    nw: int
-
-
-class RepeatUnit(NamedTuple):
-    """``RepeatUnit(length: float, mass: float)``
-
-    Details of the repeat unit. Projection length (along fully extended axis) in nm
-    (:math:`10^{-9}` m) and mass in units of g/mol.
-    """
-
-    length: float
-    mass: float
-
-
-@overload
-def phi_to_conc(phi: float, rep_unit: RepeatUnit) -> float:
-    r"""Transform the reduced concentration to solution concentration.
-
-    Args:
-        phi (float): Value of reduced concentration :math:`\varphi=cl^3`.
-        rep_unit (RepeatUnit): Repeat unit projection length and mass.
-
-    Returns:
-        float: The solution concentration :math:`c` in units of g/L.
-    """
-    ...
-
-
-@overload
-def phi_to_conc(phi: npt.NDArray, rep_unit: RepeatUnit) -> npt.NDArray:
-    r"""Transform the reduced concentration to solution concentration.
-
-    Args:
-        phi (npt.NDArray): Reduced concentration data :math:`\varphi=cl^3`.
-        rep_unit (RepeatUnit): Repeat unit projection length and mass.
-
-    Returns:
-        npt.NDArray: The solution concentration data :math:`c` in units of g/L.
-    """
-    ...
-
-
-def phi_to_conc(phi, rep_unit: RepeatUnit):
-    return phi / rep_unit.length**3 / (AVOGADRO_CONSTANT / 1e24 / rep_unit.mass)
-
-
-@overload
-def conc_to_phi(conc: float, rep_unit: RepeatUnit) -> float:
-    r"""Transform the solution concentration to reduced concentration.
-
-    Args:
-        conc (float): Value of solution concentration :math:`c` in units of g/L.
-        rep_unit (RepeatUnit): Repeat unit projection length and mass.
-
-    Returns:
-        float: The reduced concentration :math:`\varphi=cl^3`.
-    """
-    ...
-
-
-@overload
-def conc_to_phi(conc: npt.NDArray, rep_unit: RepeatUnit) -> npt.NDArray:
-    r"""Transform the solution concentration to reduced concentration.
-
-    Args:
-        conc (npt.NDArray): Solution concentration data :math:`c` in units of g/L.
-        rep_unit (RepeatUnit): Repeat unit projection length and mass.
-
-    Returns:
-        npt.NDArray: The reduced concentration data :math:`\varphi=cl^3`.
-    """
-    ...
-
-
-def conc_to_phi(conc, rep_unit: RepeatUnit):
-    return conc * rep_unit.length**3 * AVOGADRO_CONSTANT / 1e24 / rep_unit.mass
+__all__ = ["reduce_data", "process_data_to_grid", "transform_data_to_grid"]
 
 
 def reduce_data(
@@ -112,20 +31,41 @@ def reduce_data(
           and degree of polymerization :math:`N_w`.
     """
 
-    reduced_conc: npt.NDArray = conc_to_phi(conc, repeat_unit)
+    reduced_conc = conc_to_phi(conc, repeat_unit)
     degree_polym = mol_weight / repeat_unit.mass * 1e3
 
     return reduced_conc, degree_polym
 
 
-# TODO: allow for linear spacing on phi and nw
+def _range_to_bins(in_range: Range, num_bins: int) -> npt.NDArray:
+    bin_func = np.geomspace if in_range.log_scale else np.linspace
+    return bin_func(in_range.min_value, in_range.max_value, num_bins, endpoint=True)
+
+
+def _bins_to_bin_edges(bins: npt.NDArray, log_scale: bool) -> npt.NDArray:
+    bin_edges = np.zeros(bins.shape[0] + 1)
+    bin_edges[[0, -1]] = bins[[0, -1]]
+    if log_scale:
+        bin_edges[1:-1] = np.sqrt(bins[:-1] * bins[1:])
+    else:
+        bin_edges[1:-1] = (bins[:-1] + bins[1:]) / 2
+    return bin_edges
+
+
+def _bin_data(data: npt.NDArray, bin_edges: npt.NDArray) -> npt.NDArray:
+    indices = np.digitize(data, bin_edges)
+    indices = np.minimum(indices, np.zeros_like(indices) + indices.shape[0] - 1)
+    return indices
+
+
 def process_data_to_grid(
     phi_data: npt.NDArray,
     nw_data: npt.NDArray,
     visc_data: npt.NDArray,
-    res: Resolution,
-    phi_range: BasicRange,
-    nw_range: BasicRange,
+    phi_res: int,
+    nw_res: int,
+    phi_range: Range,
+    nw_range: Range,
 ) -> tuple[npt.NDArray, npt.NDArray, npt.NDArray]:
     """Transform a set of data ``(phi, nw, visc)`` into an "image", where each "pixel"
     along axis 0 represents a bin of values in the log-scale of ``phi_range`` and those
@@ -150,38 +90,16 @@ def process_data_to_grid(
           index ``(i, j)`` approximately corresponds to the reduced concentration at
           index ``i`` and the DP at index ``j``.
     """
-    shape = (res.phi, res.nw)
-    visc_out = np.zeros(shape)
-    counts = np.zeros(shape, dtype=np.uint32)
+    phi_bins = _range_to_bins(phi_range, phi_res)
+    phi_bin_edges = _bins_to_bin_edges(phi_bins, phi_range.log_scale)
+    phi_indices = _bin_data(phi_data, phi_bin_edges)
 
-    log_phi_bins: np.ndarray = np.linspace(
-        np.log10(phi_range.min_value),
-        np.log10(phi_range.max_value),
-        shape[0],
-        endpoint=True,
-    )
-    phi_bin_edges = np.zeros(log_phi_bins.shape[0] + 1)
-    phi_bin_edges[[0, -1]] = 10 ** log_phi_bins[[0, -1]]
-    phi_bin_edges[1:-1] = 10 ** ((log_phi_bins[1:] + log_phi_bins[:-1]) / 2)
-    phi_indices = np.digitize(phi_data, phi_bin_edges)
-    phi_indices = np.minimum(
-        phi_indices, np.zeros_like(phi_indices) + phi_indices.shape[0] - 1
-    )
+    nw_bins = _range_to_bins(nw_range, nw_res)
+    nw_bin_edges = _bins_to_bin_edges(nw_bins, nw_range.log_scale)
+    nw_indices = _bin_data(nw_data, nw_bin_edges)
 
-    log_nw_bins: np.ndarray = np.linspace(
-        np.log10(nw_range.min_value),
-        np.log10(nw_range.max_value),
-        shape[1],
-        endpoint=True,
-    )
-    nw_bin_edges = np.zeros(log_nw_bins.shape[0] + 1)
-    nw_bin_edges[[0, -1]] = 10 ** log_nw_bins[[0, -1]]
-    nw_bin_edges[1:-1] = 10 ** ((log_nw_bins[1:] + log_nw_bins[:-1]) / 2)
-    nw_indices = np.digitize(nw_data, nw_bin_edges)
-    nw_indices = np.minimum(
-        nw_indices, np.zeros_like(nw_indices) + nw_indices.shape[0] - 1
-    )
-
+    visc_out = np.zeros((phi_res, nw_res))
+    counts = np.zeros((phi_res, nw_res), dtype=np.uint32)
     for p, n, v in zip(phi_indices, nw_indices, visc_data):
         visc_out[p, n] += v
         counts[p, n] += 1
@@ -189,17 +107,18 @@ def process_data_to_grid(
     counts = np.maximum(counts, np.ones_like(counts))
     visc_out /= counts
 
-    return 10**log_phi_bins, 10**log_nw_bins, visc_out
+    return phi_bins, nw_bins, visc_out
 
 
 def transform_data_to_grid(
     reduced_conc: npt.NDArray,
     degree_polym: npt.NDArray,
     spec_visc: npt.NDArray,
-    res: Resolution,
-    phi_range: BasicRange,
-    nw_range: BasicRange,
-    visc_range: BasicRange,
+    phi_res: int,
+    nw_res: int,
+    phi_range: Range,
+    nw_range: Range,
+    visc_range: Range,
 ) -> tuple[torch.Tensor, torch.Tensor]:
     r"""Transform the raw, reduced data into two 2D tensors of reduced, normalized
     viscosity data ready for use in a neural network.
@@ -223,14 +142,13 @@ def transform_data_to_grid(
         reduced_conc,
         degree_polym,
         spec_visc,
-        res,
+        phi_res,
+        nw_res,
         phi_range,
         nw_range,
     )
 
-    bg_denom = nw_arr.reshape(1, -1) * phi_arr.reshape(-1, 1) ** (
-        1 / (3 * GOOD_EXP - 1)
-    )
+    bg_denom = nw_arr.reshape(1, -1) * phi_arr.reshape(-1, 1) ** (1 / NU3_1)
     bth_denom = nw_arr.reshape(1, -1) * phi_arr.reshape(-1, 1) ** 2
 
     visc_normed_bg_range = Range(

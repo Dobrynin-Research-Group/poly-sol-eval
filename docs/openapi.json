@@ -1,1 +1,553 @@
-{"openapi":"3.1.0","info":{"title":"FastAPI","version":"0.1.0"},"paths":{"/":{"get":{"summary":"Root","operationId":"root__get","responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{}}}}}}},"/models":{"get":{"summary":"Get Models","operationId":"get_models_models_get","responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{}}}}}}},"/ranges":{"get":{"summary":"Get Ranges","operationId":"get_ranges_ranges_get","responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{}}}}}}},"/new-parameters":{"post":{"summary":"Post New Parameters","operationId":"post_new_parameters_new_parameters_post","requestBody":{"content":{"application/json":{"schema":{"$ref":"#/components/schemas/InputParameters"}}},"required":true},"responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{}}}},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}}},"/evaluate":{"post":{"summary":"Post Evaluate","operationId":"post_evaluate_evaluate_post","requestBody":{"content":{"multipart/form-data":{"schema":{"$ref":"#/components/schemas/Body_post_evaluate_evaluate_post"}}},"required":true},"responses":{"200":{"description":"Successful Response","content":{"application/json":{"schema":{}}}},"422":{"description":"Validation Error","content":{"application/json":{"schema":{"$ref":"#/components/schemas/HTTPValidationError"}}}}}}}},"components":{"schemas":{"Body_post_evaluate_evaluate_post":{"properties":{"ml_model_name":{"type":"string","pattern":"[\\w\\d]+","title":"Ml Model Name"},"range_name":{"type":"string","pattern":"[\\w\\d]+","title":"Range Name"},"length":{"type":"number","exclusiveMinimum":0.0,"title":"Length"},"mass":{"type":"number","exclusiveMinimum":0.0,"title":"Mass"},"datafile":{"type":"string","format":"binary","title":"Datafile"}},"type":"object","required":["ml_model_name","range_name","length","mass","datafile"],"title":"Body_post_evaluate_evaluate_post"},"HTTPValidationError":{"properties":{"detail":{"items":{"$ref":"#/components/schemas/ValidationError"},"type":"array","title":"Detail"}},"type":"object","title":"HTTPValidationError"},"InputParameters":{"properties":{"bg":{"anyOf":[{"type":"number"},{"type":"null"}],"title":"Bg"},"bth":{"anyOf":[{"type":"number"},{"type":"null"}],"title":"Bth"},"pe":{"type":"number","title":"Pe"},"pe_variance":{"anyOf":[{"type":"number"},{"type":"null"}],"title":"Pe Variance"},"rep_unit_length":{"anyOf":[{"type":"number"},{"type":"null"}],"title":"Rep Unit Length"},"rep_unit_mass":{"anyOf":[{"type":"number"},{"type":"null"}],"title":"Rep Unit Mass"}},"type":"object","required":["bg","bth","pe","pe_variance","rep_unit_length","rep_unit_mass"],"title":"InputParameters"},"ValidationError":{"properties":{"loc":{"items":{"anyOf":[{"type":"string"},{"type":"integer"}]},"type":"array","title":"Location"},"msg":{"type":"string","title":"Message"},"type":{"type":"string","title":"Error Type"}},"type":"object","required":["loc","msg","type"],"title":"ValidationError"}}}}
+{
+    "openapi": "3.1.0",
+    "info": {
+        "title": "FastAPI",
+        "version": "0.1.0"
+    },
+    "paths": {
+        "/": {
+            "get": {
+                "summary": "Root",
+                "operationId": "root__get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/models": {
+            "get": {
+                "summary": "Get Models",
+                "description": "Return every model type.\n\nReturns:\n    _type_: _description_",
+                "operationId": "get_models_models_get",
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ModelTypesResponse"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/models/{model_type}": {
+            "get": {
+                "summary": "Get Model Instances",
+                "description": "Return all model instances of the given model type.\n\nArgs:\n    model_type (str): _description_\n\nReturns:\n    _type_: _description_",
+                "operationId": "get_model_instances_models__model_type__get",
+                "parameters": [
+                    {
+                        "name": "model_type",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Model Type"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ModelInstancesResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/evaluate": {
+            "post": {
+                "summary": "Post Evaluate",
+                "operationId": "post_evaluate_evaluate_post",
+                "requestBody": {
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "$ref": "#/components/schemas/Body_post_evaluate_evaluate_post"
+                            }
+                        }
+                    },
+                    "required": true
+                },
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/EvaluationResponse"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/datafile/{token}": {
+            "get": {
+                "summary": "Get Datafile",
+                "operationId": "get_datafile_datafile__token__get",
+                "parameters": [
+                    {
+                        "name": "token",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "title": "Token"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Successful Response",
+                        "content": {
+                            "application/json": {
+                                "schema": {}
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation Error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/HTTPValidationError"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "components": {
+        "schemas": {
+            "Body_post_evaluate_evaluate_post": {
+                "properties": {
+                    "ml_model_name": {
+                        "type": "string",
+                        "title": "Ml Model Name"
+                    },
+                    "range_name": {
+                        "type": "string",
+                        "title": "Range Name"
+                    },
+                    "length": {
+                        "type": "number",
+                        "exclusiveMinimum": 0.0,
+                        "title": "Length"
+                    },
+                    "mass": {
+                        "type": "number",
+                        "exclusiveMinimum": 0.0,
+                        "title": "Mass"
+                    },
+                    "datafile": {
+                        "type": "string",
+                        "format": "binary",
+                        "title": "Datafile"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "ml_model_name",
+                    "range_name",
+                    "length",
+                    "mass",
+                    "datafile"
+                ],
+                "title": "Body_post_evaluate_evaluate_post"
+            },
+            "EvaluationCase": {
+                "properties": {
+                    "bg": {
+                        "anyOf": [
+                            {
+                                "type": "number",
+                                "exclusiveMinimum": 0.0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Bg"
+                    },
+                    "bth": {
+                        "anyOf": [
+                            {
+                                "type": "number",
+                                "exclusiveMinimum": 0.0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Bth"
+                    },
+                    "bg_plateau": {
+                        "anyOf": [
+                            {
+                                "type": "number",
+                                "exclusiveMinimum": 0.0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Bg Plateau"
+                    },
+                    "bth_plateau": {
+                        "anyOf": [
+                            {
+                                "type": "number",
+                                "exclusiveMinimum": 0.0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Bth Plateau"
+                    },
+                    "pe": {
+                        "type": "number",
+                        "exclusiveMinimum": 0.0,
+                        "title": "Pe",
+                        "default": 1e-09
+                    },
+                    "pe_variance": {
+                        "anyOf": [
+                            {
+                                "type": "number",
+                                "exclusiveMinimum": 0.0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Pe Variance"
+                    },
+                    "kuhn_length": {
+                        "anyOf": [
+                            {
+                                "type": "number",
+                                "exclusiveMinimum": 0.0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Kuhn Length"
+                    },
+                    "thermal_blob_size": {
+                        "anyOf": [
+                            {
+                                "type": "number",
+                                "exclusiveMinimum": 0.0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Thermal Blob Size"
+                    },
+                    "dp_of_thermal_blob": {
+                        "anyOf": [
+                            {
+                                "type": "number",
+                                "exclusiveMinimum": 0.0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Dp Of Thermal Blob"
+                    },
+                    "excluded_volume": {
+                        "anyOf": [
+                            {
+                                "type": "number",
+                                "exclusiveMinimum": 0.0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Excluded Volume"
+                    },
+                    "thermal_blob_conc": {
+                        "anyOf": [
+                            {
+                                "type": "number",
+                                "exclusiveMinimum": 0.0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Thermal Blob Conc"
+                    },
+                    "concentrated_conc": {
+                        "anyOf": [
+                            {
+                                "type": "number",
+                                "exclusiveMinimum": 0.0
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Concentrated Conc"
+                    }
+                },
+                "type": "object",
+                "title": "EvaluationCase"
+            },
+            "EvaluationResponse": {
+                "properties": {
+                    "bg_only": {
+                        "$ref": "#/components/schemas/EvaluationCase"
+                    },
+                    "bth_only": {
+                        "$ref": "#/components/schemas/EvaluationCase"
+                    },
+                    "bg_and_bth": {
+                        "$ref": "#/components/schemas/EvaluationCase"
+                    },
+                    "token": {
+                        "type": "string",
+                        "title": "Token",
+                        "default": ""
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "bg_only",
+                    "bth_only",
+                    "bg_and_bth"
+                ],
+                "title": "EvaluationResponse"
+            },
+            "HTTPValidationError": {
+                "properties": {
+                    "detail": {
+                        "items": {
+                            "$ref": "#/components/schemas/ValidationError"
+                        },
+                        "type": "array",
+                        "title": "Detail"
+                    }
+                },
+                "type": "object",
+                "title": "HTTPValidationError"
+            },
+            "ModelInstancesResponse": {
+                "properties": {
+                    "model_instances": {
+                        "items": {
+                            "$ref": "#/components/schemas/RangeSet"
+                        },
+                        "type": "array",
+                        "title": "Model Instances"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "model_instances"
+                ],
+                "title": "ModelInstancesResponse"
+            },
+            "ModelType": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "description": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Description"
+                    },
+                    "link": {
+                        "anyOf": [
+                            {
+                                "type": "string"
+                            },
+                            {
+                                "type": "null"
+                            }
+                        ],
+                        "title": "Link"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name"
+                ],
+                "title": "ModelType"
+            },
+            "ModelTypesResponse": {
+                "properties": {
+                    "model_types": {
+                        "items": {
+                            "$ref": "#/components/schemas/ModelType"
+                        },
+                        "type": "array",
+                        "title": "Model Types"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "model_types"
+                ],
+                "title": "ModelTypesResponse"
+            },
+            "Range": {
+                "properties": {
+                    "min_value": {
+                        "type": "number",
+                        "title": "Min Value"
+                    },
+                    "max_value": {
+                        "type": "number",
+                        "title": "Max Value"
+                    },
+                    "log_scale": {
+                        "type": "boolean",
+                        "title": "Log Scale",
+                        "default": false
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "min_value",
+                    "max_value"
+                ],
+                "title": "Range"
+            },
+            "RangeSet": {
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "title": "Name"
+                    },
+                    "phi_res": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0.0,
+                        "title": "Phi Res"
+                    },
+                    "nw_res": {
+                        "type": "integer",
+                        "exclusiveMinimum": 0.0,
+                        "title": "Nw Res"
+                    },
+                    "phi_range": {
+                        "$ref": "#/components/schemas/Range"
+                    },
+                    "nw_range": {
+                        "$ref": "#/components/schemas/Range"
+                    },
+                    "visc_range": {
+                        "$ref": "#/components/schemas/Range"
+                    },
+                    "bg_range": {
+                        "$ref": "#/components/schemas/Range"
+                    },
+                    "bth_range": {
+                        "$ref": "#/components/schemas/Range"
+                    },
+                    "pe_range": {
+                        "$ref": "#/components/schemas/Range"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "name",
+                    "phi_res",
+                    "nw_res",
+                    "phi_range",
+                    "nw_range",
+                    "visc_range",
+                    "bg_range",
+                    "bth_range",
+                    "pe_range"
+                ],
+                "title": "RangeSet"
+            },
+            "ValidationError": {
+                "properties": {
+                    "loc": {
+                        "items": {
+                            "anyOf": [
+                                {
+                                    "type": "string"
+                                },
+                                {
+                                    "type": "integer"
+                                }
+                            ]
+                        },
+                        "type": "array",
+                        "title": "Location"
+                    },
+                    "msg": {
+                        "type": "string",
+                        "title": "Message"
+                    },
+                    "type": {
+                        "type": "string",
+                        "title": "Error Type"
+                    }
+                },
+                "type": "object",
+                "required": [
+                    "loc",
+                    "msg",
+                    "type"
+                ],
+                "title": "ValidationError"
+            }
+        }
+    }
+}
