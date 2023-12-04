@@ -3,7 +3,6 @@ from pathlib import Path
 from typing import Any, Optional
 
 from pydantic import BaseModel, PositiveFloat, PositiveInt, model_validator
-
 from ruamel.yaml import YAML
 import torch
 
@@ -14,7 +13,10 @@ __all__ = [
     "NeuralNetType",
     "NeuralNetPair",
     "RepeatUnit",
-    "EvaluationCase",
+    "PeResult",
+    "ComboCase",
+    "BgCase",
+    "BthCase",
 ]
 
 _yaml_parser = YAML(typ="safe", pure=True)
@@ -155,15 +157,30 @@ class PeResult(BaseModel):
 
 
 class EvaluationCase(BaseModel):
-    bg: Optional[PositiveFloat] = None
-    bth: Optional[PositiveFloat] = None
-    bg_plateau: Optional[PositiveFloat] = None
-    bth_plateau: Optional[PositiveFloat] = None
-    pe: PositiveFloat = 1e-9
-    pe_variance: Optional[PositiveFloat] = None
-    kuhn_length: Optional[PositiveFloat] = None
-    thermal_blob_size: Optional[PositiveFloat] = None
-    dp_of_thermal_blob: Optional[PositiveFloat] = None
-    excluded_volume: Optional[PositiveFloat] = None
-    thermal_blob_conc: Optional[PositiveFloat] = None
-    concentrated_conc: Optional[PositiveFloat] = None
+    pe_value: PositiveFloat
+    pe_error: PositiveFloat
+
+
+class ComboCase(EvaluationCase):
+    bg: PositiveFloat
+    bth: PositiveFloat
+    bg_plateau: PositiveFloat
+    bth_plateau: PositiveFloat
+    kuhn_length: PositiveFloat
+    thermal_blob_size: PositiveFloat
+    dp_of_thermal_blob: PositiveFloat
+    excluded_volume: PositiveFloat
+    thermal_blob_conc: PositiveFloat
+    concentrated_conc: PositiveFloat
+
+
+class BgCase(EvaluationCase):
+    bg: PositiveFloat
+    bg_plateau: PositiveFloat
+
+
+class BthCase(EvaluationCase):
+    bth: PositiveFloat
+    bth_plateau: PositiveFloat
+    kuhn_length: PositiveFloat
+    concentrated_conc: PositiveFloat
