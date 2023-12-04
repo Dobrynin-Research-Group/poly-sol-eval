@@ -52,7 +52,7 @@ async def evaluate_dataset(
     repeat_unit: RepeatUnit,
     bg_model: torch.nn.Module,
     bth_model: torch.nn.Module,
-    range_config: RangeSet,
+    range_set: RangeSet,
 ) -> Results:
     """Perform an evaluation of experimental data given one previously trained PyTorch
     model for each of the :math:`B_g` and :math:`B_{th}` parameters.
@@ -89,26 +89,20 @@ async def evaluate_dataset(
         reduced_conc,
         degree_polym,
         specific_viscosity,
-        range_config.phi_res,
-        range_config.nw_res,
-        range_config.phi_range,
-        range_config.nw_range,
-        range_config.visc_range,
-    )
-
-    bg_range = Range(
-        min_value=range_config.bg_range.min_value,
-        max_value=range_config.bg_range.max_value,
-        log_scale=range_config.bg_range.log_scale,
-    )
-    bth_range = Range(
-        min_value=range_config.bth_range.min_value,
-        max_value=range_config.bth_range.max_value,
-        log_scale=range_config.bth_range.log_scale,
+        range_set.phi_res,
+        range_set.nw_res,
+        range_set.phi_range,
+        range_set.nw_range,
+        range_set.visc_range,
     )
 
     bg, bth = await do_inferences(
-        bg_model, visc_normed_bg, bg_range, bth_model, visc_normed_bth, bth_range
+        bg_model,
+        visc_normed_bg,
+        range_set.bg_range,
+        bth_model,
+        visc_normed_bth,
+        range_set.bth_range,
     )
 
     arr = np.stack(
