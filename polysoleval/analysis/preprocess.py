@@ -138,17 +138,13 @@ def process_data_to_grid(
           index ``(i, j)`` approximately corresponds to the reduced concentration at
           index ``i`` and the DP at index ``j``.
     """
-    shape = (res.phi, res.nw)
-    visc_out = np.zeros(shape)
-    counts = np.zeros(shape, dtype=np.uint32)
-
     log_phi_bins: np.ndarray = np.linspace(
         np.log10(phi_range.min_value),
         np.log10(phi_range.max_value),
-        shape[0],
+        res.phi,
         endpoint=True,
     )
-    phi_bin_edges = np.zeros(log_phi_bins.shape[0] + 1)
+    phi_bin_edges = np.zeros(res.phi + 1)
     phi_bin_edges[[0, -1]] = 10 ** log_phi_bins[[0, -1]]
     phi_bin_edges[1:-1] = 10 ** ((log_phi_bins[1:] + log_phi_bins[:-1]) / 2)
     phi_indices = np.digitize(phi_data, phi_bin_edges)
@@ -159,10 +155,10 @@ def process_data_to_grid(
     log_nw_bins: np.ndarray = np.linspace(
         np.log10(nw_range.min_value),
         np.log10(nw_range.max_value),
-        shape[1],
+        res.nw,
         endpoint=True,
     )
-    nw_bin_edges = np.zeros(log_nw_bins.shape[0] + 1)
+    nw_bin_edges = np.zeros(res.nw + 1)
     nw_bin_edges[[0, -1]] = 10 ** log_nw_bins[[0, -1]]
     nw_bin_edges[1:-1] = 10 ** ((log_nw_bins[1:] + log_nw_bins[:-1]) / 2)
     nw_indices = np.digitize(nw_data, nw_bin_edges)
@@ -170,6 +166,8 @@ def process_data_to_grid(
         nw_indices, np.zeros_like(nw_indices) + nw_indices.shape[0] - 1
     )
 
+    visc_out = np.zeros((res.phi, res.nw))
+    counts = np.zeros((res.phi, res.nw), dtype=np.uint32)
     for p, n, v in zip(phi_indices, nw_indices, visc_data):
         visc_out[p, n] += v
         counts[p, n] += 1
