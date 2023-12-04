@@ -84,7 +84,4 @@ async def do_fits(arr: npt.NDArray) -> tuple[PeResult, PeResult, PeResult]:
     bg_only_task = asyncio.create_task(fit_pe(arr[7], arr[8]))
     bth_only_task = asyncio.create_task(fit_pe(arr[9], arr[10]))
 
-    pe_combo, pe_bg_only, pe_bth_only = await asyncio.gather(
-        combo_task, bg_only_task, bth_only_task
-    )
-    return pe_combo, pe_bg_only, pe_bth_only
+    return await asyncio.gather(combo_task, bg_only_task, bth_only_task)

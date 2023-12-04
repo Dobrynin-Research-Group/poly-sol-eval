@@ -29,7 +29,7 @@ async def inference_model(
 
     b_range.unnormalize(pred)
 
-    return pred.squeeze().item()
+    return pred.item()
 
 
 async def do_inferences(

@@ -31,18 +31,18 @@ def reduce_data(
           and degree of polymerization :math:`N_w`.
     """
 
-    reduced_conc: npt.NDArray = conc_to_phi(conc, repeat_unit)
+    reduced_conc = conc_to_phi(conc, repeat_unit)
     degree_polym = mol_weight / repeat_unit.mass * 1e3
 
     return reduced_conc, degree_polym
 
 
-def range_to_bins(in_range: Range, num_bins: int) -> npt.NDArray:
+def _range_to_bins(in_range: Range, num_bins: int) -> npt.NDArray:
     bin_func = np.geomspace if in_range.log_scale else np.linspace
     return bin_func(in_range.min_value, in_range.max_value, num_bins, endpoint=True)
 
 
-def bins_to_bin_edges(bins: npt.NDArray, log_scale: bool) -> npt.NDArray:
+def _bins_to_bin_edges(bins: npt.NDArray, log_scale: bool) -> npt.NDArray:
     bin_edges = np.zeros(bins.shape[0] + 1)
     bin_edges[[0, -1]] = bins[[0, -1]]
     if log_scale:
@@ -52,7 +52,7 @@ def bins_to_bin_edges(bins: npt.NDArray, log_scale: bool) -> npt.NDArray:
     return bin_edges
 
 
-def bin_data(data: npt.NDArray, bin_edges: npt.NDArray) -> npt.NDArray:
+def _bin_data(data: npt.NDArray, bin_edges: npt.NDArray) -> npt.NDArray:
     indices = np.digitize(data, bin_edges)
     indices = np.minimum(indices, np.zeros_like(indices) + indices.shape[0] - 1)
     return indices
@@ -90,13 +90,13 @@ def process_data_to_grid(
           index ``(i, j)`` approximately corresponds to the reduced concentration at
           index ``i`` and the DP at index ``j``.
     """
-    phi_bins = range_to_bins(phi_range, phi_res)
-    phi_bin_edges = bins_to_bin_edges(phi_bins, phi_range.log_scale)
-    phi_indices = bin_data(phi_data, phi_bin_edges)
+    phi_bins = _range_to_bins(phi_range, phi_res)
+    phi_bin_edges = _bins_to_bin_edges(phi_bins, phi_range.log_scale)
+    phi_indices = _bin_data(phi_data, phi_bin_edges)
 
-    nw_bins = range_to_bins(nw_range, nw_res)
-    nw_bin_edges = bins_to_bin_edges(nw_bins, nw_range.log_scale)
-    nw_indices = bin_data(nw_data, nw_bin_edges)
+    nw_bins = _range_to_bins(nw_range, nw_res)
+    nw_bin_edges = _bins_to_bin_edges(nw_bins, nw_range.log_scale)
+    nw_indices = _bin_data(nw_data, nw_bin_edges)
 
     visc_out = np.zeros((phi_res, nw_res))
     counts = np.zeros((phi_res, nw_res), dtype=np.uint32)

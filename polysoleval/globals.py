@@ -30,7 +30,7 @@ NU = 0.588  # good solvent exponent
 NU3_1 = 3 * NU - 1
 NU2_1 = 2 * NU - 1
 
-REDUCED_AVOGADRO = 0.60221408  # Avogadro number divieded by 10^24
+REDUCED_AVOGADRO = 0.60221408  # Avogadro number divided by 10^24
 
 NEURALNETPATH = Path(environ["modelpath"])
 RANGEPATH = Path(environ["rangepath"])
