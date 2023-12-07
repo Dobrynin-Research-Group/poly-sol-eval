@@ -2,6 +2,7 @@ import asyncio
 
 import numpy.typing as npt
 from scipy.optimize import curve_fit
+from polysoleval.exceptions import PSSTException
 
 from polysoleval.models import PeResult
 
@@ -54,16 +55,22 @@ async def fit_pe(
         PeResult: The optimized value of the entanglement packing number :math:`P_e`
           and standard error thereof.
     """
-    res: tuple[npt.NDArray, npt.NDArray] = curve_fit(
-        fit_func,
-        xdata,
-        ydata,
-        p0=(init_guess,),
-        bounds=bounds,
-        jac=fit_func_jac,
-    )
-    popt, pcov = res
-    return PeResult(value=popt.item(), error=pcov.item())
+    try:
+        res: tuple[npt.NDArray, npt.NDArray] = curve_fit(
+            fit_func,
+            xdata,
+            ydata,
+            p0=(init_guess,),
+            bounds=bounds,
+            jac=fit_func_jac,
+        )
+        popt, pcov = res[0].item(), res[1].item()
+    except ValueError as ve:
+        raise PSSTException.FittingValueError from ve
+    except RuntimeError:
+        popt, pcov = 1.0, 1.0
+
+    return PeResult(value=popt, error=pcov)
 
 
 async def do_fits(arr: npt.NDArray) -> tuple[PeResult, PeResult, PeResult]:

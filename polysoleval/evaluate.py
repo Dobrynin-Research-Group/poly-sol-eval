@@ -3,9 +3,10 @@ from typing import NamedTuple
 import numpy as np
 import numpy.typing as npt
 import torch
+from polysoleval.exceptions import PSSTException
 
 from polysoleval.globals import *
-from polysoleval.models import PeResult, RangeSet, RepeatUnit
+from polysoleval.models import PeResult, Range, RangeSet, RepeatUnit
 from polysoleval.analysis.fitting import do_fits
 from polysoleval.analysis.inference import do_inferences
 from polysoleval.analysis.preprocess import *
@@ -18,6 +19,7 @@ class Results(NamedTuple):
     pe_bg_only: PeResult
     pe_bth_only: PeResult
     array: npt.NDArray
+    warnings: list[str]
 
 
 def lamda(bg, bth, phi):
@@ -26,7 +28,7 @@ def lamda(bg, bth, phi):
     elif bg:
         return np.minimum(1, phi ** (-0.236 / 0.764) * bg ** (2 / (0.412 * 0.764)))
     else:
-        raise ValueError()
+        raise PSSTException.InvalidInternalCallLambda
 
 
 def g_lamdag(bg, bth, phi):
@@ -42,7 +44,11 @@ def g_lamdag(bg, bth, phi):
     elif bth:
         return np.minimum(bth**2 / phi ** (4 / 3), bth**6 / phi**2)
     else:
-        raise ValueError()
+        raise PSSTException.InvalidInternalCallGLambdaG
+
+
+def outside_range(data: npt.NDArray, range_: Range) -> bool:
+    return not np.all(range_.min_value <= data <= range_.max_value)
 
 
 async def evaluate_dataset(
@@ -79,12 +85,28 @@ async def evaluate_dataset(
           following cases: (1) both :math:`B_g` and :math:`B_{th}` are valid, (2) only
           :math:`B_g` is valid, and (3) only :math:`B_{th}` is valid.
     """
-
+    phi_range, nw_range = range_set.phi_range, range_set.nw_range
+    warnings: list[str] = list()
     reduced_conc, degree_polym = reduce_data(
         concentration_gpL,
         mol_weight_kgpmol,
         repeat_unit,
     )
+    if outside_range(reduced_conc, phi_range):
+        warnings.append(
+            "Found concentration data outside of valid range, check that the monomer"
+            " length and molar mass are valid.\nReduced concentration should be"
+            f" between {phi_range.min_value} and {phi_range.max_value}. Data has"
+            f" minimum of {reduced_conc.min()}, maximum of {reduced_conc.max()}."
+        )
+    if outside_range(degree_polym, nw_range):
+        warnings.append(
+            "Found DP data outside of valid range, check that the monomer"
+            " molar mass is valid.\nDegree of polymerization should be"
+            f" between {nw_range.min_value} and {nw_range.max_value}. Data has"
+            f" minimum of {degree_polym.min()}, maximum of {degree_polym.max()}."
+        )
+
     visc_normed_bg, visc_normed_bth = transform_data_to_grid(
         reduced_conc,
         degree_polym,
@@ -121,7 +143,15 @@ async def evaluate_dataset(
         ],
         axis=0,
     )
+    if np.any(np.isnan(arr)):
+        warnings.append("Found invalid values, likely divided by zero")
 
     pe_combo, pe_bg, pe_bth = await do_fits(arr)
+    for name, pe in zip(
+        ("both Bg and Bth", "Bg only", "Bth only"),
+        (pe_combo, pe_bg, pe_bth),
+    ):
+        if pe.value == 1.0:
+            warnings.append(f"Fitting could not be completed for the case of {name}.")
 
-    return Results(bg, bth, pe_combo, pe_bg, pe_bth, arr)
+    return Results(bg, bth, pe_combo, pe_bg, pe_bth, arr, warnings)

@@ -18,6 +18,7 @@ class Evaluation(BaseModel):
     bth_only: BthCase
     bg_and_bth: ComboCase
     token: str = ""
+    warnings: list[str]
 
     @classmethod
     def from_params(
@@ -65,4 +66,6 @@ class Evaluation(BaseModel):
             concentrated_conc=phi_xx,
         )
 
-        return cls(bg_only=bg_case, bth_only=bth_case, bg_and_bth=combo_case)
+        return cls(
+            bg_only=bg_case, bth_only=bth_case, bg_and_bth=combo_case, warnings=list()
+        )

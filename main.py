@@ -108,10 +108,7 @@ async def post_evaluate(
 
     rep_unit = RepeatUnit(length=length, mass=mass)
 
-    try:
-        conc, mw, visc = validate(datafile.file)
-    except Exception as e:
-        raise PSSTException.InvalidDatafile from e
+    conc, mw, visc = validate(datafile.file)
 
     # Do evaluation (two inferences and three curve fits)
     try:

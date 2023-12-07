@@ -1,6 +1,7 @@
 from asyncio import create_task, gather
 
 import torch
+from polysoleval.exceptions import PSSTException
 
 from polysoleval.models import Range
 
@@ -25,7 +26,10 @@ async def inference_model(
         float: The inferred value of the parameter.
     """
     with torch.no_grad():
-        pred: torch.Tensor = model(visc_normed.unsqueeze_(0))
+        try:
+            pred: torch.Tensor = model(visc_normed.unsqueeze_(0))
+        except RuntimeError as re:
+            raise PSSTException.InferenceRuntimeError from re
 
     b_range.unnormalize(pred)
 
