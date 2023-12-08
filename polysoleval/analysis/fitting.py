@@ -3,6 +3,7 @@ import asyncio
 import numpy.typing as npt
 from scipy.optimize import curve_fit
 from polysoleval.exceptions import PSSTException
+from polysoleval.logging import get_logger
 
 from polysoleval.models import PeResult
 
@@ -55,6 +56,10 @@ async def fit_pe(
         PeResult: The optimized value of the entanglement packing number :math:`P_e`
           and standard error thereof.
     """
+    log = get_logger()
+    log.debug(f"fit_pe({xdata = }, {ydata = }, {init_guess = }, {bounds = })")
+    log.debug("%(taskName)s")
+
     try:
         res: tuple[npt.NDArray, npt.NDArray] = curve_fit(
             fit_func,
@@ -87,6 +92,9 @@ async def do_fits(arr: npt.NDArray) -> tuple[PeResult, PeResult, PeResult]:
         tuple[PeResult, PeResult, PeResult]: The estimated values and standard errors
           for the three cases describted above.
     """
+    log = get_logger()
+    log.debug(f"do_fits({arr = })")
+
     combo_task = asyncio.create_task(fit_pe(arr[5], arr[6]))
     bg_only_task = asyncio.create_task(fit_pe(arr[7], arr[8]))
     bth_only_task = asyncio.create_task(fit_pe(arr[9], arr[10]))

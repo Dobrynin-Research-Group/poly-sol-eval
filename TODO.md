@@ -14,6 +14,7 @@
     1. ~~substitute all exceptions into main.py~~
 
 ## Other necessary changes
+1. ~~Add logging~~
 1. start documentation for site users
 1. identify "best" trained ML models of 3 from paper
 1. Documentation

@@ -2,6 +2,7 @@ from asyncio import create_task, gather
 
 import torch
 from polysoleval.exceptions import PSSTException
+from polysoleval.logging import get_logger
 
 from polysoleval.models import Range
 
@@ -25,6 +26,10 @@ async def inference_model(
     Returns:
         float: The inferred value of the parameter.
     """
+    log = get_logger()
+    log.debug(f"inference_model({model = }, {visc_normed = }, {b_range = })")
+    log.debug("%(taskName)s")
+
     with torch.no_grad():
         try:
             pred: torch.Tensor = model(visc_normed.unsqueeze_(0))
@@ -62,6 +67,12 @@ async def do_inferences(
         tuple[float, float]: The estimated values of :math:`B_g` and :math:`B_{th}`,
           respectively.
     """
+    log = get_logger()
+    log.debug(
+        f"do_inferences({bg_model = }, {visc_normed_bg = }, {bg_range = },"
+        f" {bth_model = }, {visc_normed_bth = }, {bth_range = }, "
+    )
+
     bg_task = create_task(inference_model(bg_model, visc_normed_bg, bg_range))
     bth_task = create_task(inference_model(bth_model, visc_normed_bth, bth_range))
     bg, bth = await gather(bg_task, bth_task)

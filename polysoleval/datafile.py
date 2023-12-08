@@ -9,6 +9,7 @@ import numpy as np
 import numpy.typing as npt
 
 from polysoleval.exceptions import PSSTException
+from polysoleval.logging import get_logger
 
 GeneratorFunc = Callable[[], Generator[bytes, None, None]]
 
@@ -32,6 +33,9 @@ def validate(
     Returns:
         tuple[np.ndarray, np.ndarray, np.ndarray]: The values of the three columns.
     """
+    log = get_logger()
+    log.debug(f"validate({filestream = })")
+
     try:
         data = np.genfromtxt(
             filestream,
@@ -62,8 +66,11 @@ class DatafileHandler:
     def __init__(self):
         self._cache: dict[UUID, BytesIO] = dict()
         self._expiration: dict[UUID, float] = dict()
+        self._log = get_logger()
 
     def write_file(self, arr: npt.NDArray) -> str:
+        self._log.debug(f"DatafileHanler.write_file({arr = })")
+
         b = BytesIO()
         np.savetxt(b, arr.T, fmt="%.5e", delimiter=",", encoding="utf-8")
         uuid = uuid1()
@@ -77,6 +84,8 @@ class DatafileHandler:
         return str(uuid)
 
     def check_delete(self) -> None:
+        self._log.debug("DatafileHanler.check_delete()")
+
         now = time()
         for uuid in self._cache:
             if uuid not in self._expiration or now >= self._expiration[uuid]:
