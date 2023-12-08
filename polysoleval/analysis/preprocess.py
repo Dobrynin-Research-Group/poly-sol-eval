@@ -3,6 +3,7 @@ import numpy.typing as npt
 import torch
 
 from polysoleval.globals import NU3_1
+from polysoleval.logging import get_logger
 from polysoleval.models import Range, RepeatUnit
 from polysoleval.conversions import conc_to_phi
 
@@ -30,10 +31,12 @@ def reduce_data(
         tuple[npt.NDArray, npt.NDArray]: The reduced concentration :math:`\varphi=cl^3`
           and degree of polymerization :math:`N_w`.
     """
+    log = get_logger()
+    log.debug(f"reduce_data({conc = }, {mol_weight = }, {repeat_unit = })")
 
     reduced_conc = conc_to_phi(conc, repeat_unit)
     degree_polym = mol_weight / repeat_unit.mass * 1e3
-
+    log.debug("finishing reduce_data")
     return reduced_conc, degree_polym
 
 
@@ -90,20 +93,30 @@ def process_data_to_grid(
           index ``(i, j)`` approximately corresponds to the reduced concentration at
           index ``i`` and the DP at index ``j``.
     """
+    log = get_logger()
+    log.debug(
+        f"process_data_to_grid({phi_data = }, {nw_data = }, {visc_data = },"
+        f" {phi_res = }, {nw_res = }, {phi_range = }, {nw_range = })"
+    )
+
+    log.debug("binning phi dimension")
     phi_bins = _range_to_bins(phi_range, phi_res)
     phi_bin_edges = _bins_to_bin_edges(phi_bins, phi_range.log_scale)
     phi_indices = _bin_data(phi_data, phi_bin_edges)
 
+    log.debug("binning nw dimension")
     nw_bins = _range_to_bins(nw_range, nw_res)
     nw_bin_edges = _bins_to_bin_edges(nw_bins, nw_range.log_scale)
     nw_indices = _bin_data(nw_data, nw_bin_edges)
 
+    log.debug("counting visc bins")
     visc_out = np.zeros((phi_res, nw_res))
     counts = np.zeros((phi_res, nw_res), dtype=np.uint32)
     for p, n, v in zip(phi_indices, nw_indices, visc_data):
         visc_out[p, n] += v
         counts[p, n] += 1
 
+    log.debug("computing visc averages")
     counts = np.maximum(counts, np.ones_like(counts))
     visc_out /= counts
 
@@ -138,6 +151,12 @@ def transform_data_to_grid(
         tuple[psst.NormedTensor, psst.NormedTensor]: The reduced specific viscosities
           :math:`\eta_{sp}/N_w \phi^{1.31}` and :math:`\eta_{sp}/N_w \phi^2`.
     """
+    log = get_logger()
+    log.debug(
+        f"transform_data_to_grid({reduced_conc = }, {degree_polym = }, {spec_visc = },"
+        f" {phi_res = }, {nw_res = }, {phi_range = }, {nw_range = }, {visc_range = })"
+    )
+
     phi_arr, nw_arr, visc_arr = process_data_to_grid(
         reduced_conc,
         degree_polym,
@@ -148,6 +167,7 @@ def transform_data_to_grid(
         nw_range,
     )
 
+    log.debug("normalizing viscosity")
     bg_denom = nw_arr.reshape(1, -1) * phi_arr.reshape(-1, 1) ** (1 / NU3_1)
     bth_denom = nw_arr.reshape(1, -1) * phi_arr.reshape(-1, 1) ** 2
 

@@ -2,7 +2,7 @@ from math import log10
 from pathlib import Path
 from typing import Any, Optional
 
-from pydantic import BaseModel, PositiveFloat, PositiveInt, model_validator
+from pydantic import BaseModel, Field, model_validator, PositiveFloat
 from ruamel.yaml import YAML
 import torch
 
@@ -84,8 +84,8 @@ class Range(BaseModel):
 class RangeSet(BaseModel):
     name: str
 
-    phi_res: PositiveInt
-    nw_res: PositiveInt
+    phi_res: int = Field(gt=4)
+    nw_res: int = Field(gt=4)
 
     phi_range: Range
     nw_range: Range

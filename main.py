@@ -3,6 +3,7 @@ from typing import Annotated
 
 from fastapi import FastAPI, Form, UploadFile
 from fastapi.responses import StreamingResponse
+from polysoleval.logging import get_logger, setup_logger
 
 from polysoleval.models import *
 from polysoleval.datafile import validate
@@ -14,6 +15,10 @@ from polysoleval import responses
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    log = get_logger()
+    log = setup_logger(log)
+    log.info("set up the logger")
+
     # load model descriptions
     global NEURALNET_TYPES
     NEURALNET_TYPES = {
@@ -101,6 +106,9 @@ async def post_evaluate(
 ) -> responses.Evaluation:
     HANDLER.check_delete()
 
+    log = get_logger()
+    log.debug("starting /evaluate")
+
     # Validate first
     instance = NEURALNET_PAIRS.get(NetRangePairNames(ml_model_name, range_name), None)
     if instance is None:
@@ -108,10 +116,7 @@ async def post_evaluate(
 
     rep_unit = RepeatUnit(length=length, mass=mass)
 
-    try:
-        conc, mw, visc = validate(datafile.file)
-    except Exception as e:
-        raise PSSTException.InvalidDatafile from e
+    conc, mw, visc = validate(datafile.file)
 
     # Do evaluation (two inferences and three curve fits)
     try:
@@ -141,10 +146,7 @@ async def post_evaluate(
     return eval_response
 
 
-@app.get(
-    "/datafile/{token}",
-    responses={200: {"content": {"text/plain; charset=utf-8": {}}}},
-)
+@app.get("/datafile/{token}")
 def get_datafile(token: str) -> StreamingResponse:
     try:
         file_generator = HANDLER.get_generator(token)
