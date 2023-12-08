@@ -11,7 +11,7 @@ import numpy.typing as npt
 from polysoleval.exceptions import PSSTException
 from polysoleval.logging import get_logger
 
-GeneratorFunc = Callable[[], Generator[bytes, None, None]]
+GeneratorFunc = Callable[[], Generator[str, None, None]]
 
 
 def validate(
@@ -64,7 +64,7 @@ def validate(
 
 class DatafileHandler:
     def __init__(self):
-        self._cache: dict[UUID, BytesIO] = dict()
+        self._cache: dict[UUID, str] = dict()
         self._expiration: dict[UUID, float] = dict()
         self._log = get_logger()
 
@@ -79,7 +79,7 @@ class DatafileHandler:
             if uuid not in self._cache:
                 break
 
-        self._cache[uuid] = b
+        self._cache[uuid] = b.getvalue().decode()
         self._expiration[uuid] = time() + timedelta(hours=4).total_seconds()
         return str(uuid)
 
