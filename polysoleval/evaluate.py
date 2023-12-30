@@ -163,10 +163,13 @@ async def evaluate_dataset(
             degree_polym / g_lamdag(bg, bth, reduced_conc),
             specific_viscosity * lamda(bg, bth, reduced_conc),
         ],
-        axis=0,
-    )
+        axis=1,
+    )  # Nx11 array
     if np.any(np.isnan(arr)):
         warnings = warn("Found invalid values, likely divided by zero", log, warnings)
+
+    inds = np.lexsort((reduced_conc, degree_polym))
+    arr = arr[inds]
 
     pe_combo, pe_bg, pe_bth = await do_fits(arr)
     for name, pe in zip(

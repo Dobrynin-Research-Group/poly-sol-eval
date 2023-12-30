@@ -72,14 +72,27 @@ class DatafileHandler:
         self._log.debug(f"DatafileHanler.write_file({arr = })")
 
         b = BytesIO()
-        np.savetxt(b, arr.T, fmt="%.5e", delimiter=",", encoding="utf-8")
+        np.savetxt(
+            b,
+            arr,
+            fmt="%.5e",
+            delimiter=",",
+            encoding="utf-8",
+            header="x,labels,1y,2y,3y,4xBg,4yBg,4xBth,4yBth,4xCombo,4yCombo",
+            comments="",
+        )
         uuid = uuid1()
+        file_string = b.getvalue().decode()
+
+        # with open("sample_file.csv", "w") as csv:
+        #     csv.write(file_string)
 
         for _ in range(10):
             if uuid not in self._cache:
                 break
+            uuid = uuid1()
 
-        self._cache[uuid] = b.getvalue().decode()
+        self._cache[uuid] = file_string
         self._expiration[uuid] = time() + timedelta(hours=4).total_seconds()
         return str(uuid)
 
