@@ -4,5 +4,7 @@ numpy
 python-multipart
 ruamel.yaml
 scipy
-torch
 uvicorn
+
+--index-url https://download.pytorch.org/whl/cpu
+torch
