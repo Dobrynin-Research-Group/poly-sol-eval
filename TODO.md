@@ -23,8 +23,8 @@
     1. add documentation in response_models?
 
 ## Internal design preferences
-1. preprocessing
-    1. reduce code duplication by sending pre-computed arrays to fit functions
-    1. separate preprocessing functions for easier understanding
-    1. change Avogadro constant to 0.6022... to simplify conversion
-    1. rename GOOD_EXP to NU for math
+1. ~~preprocessing~~
+    1. ~~reduce code duplication by sending pre-computed arrays to fit functions~~
+    1. ~~separate preprocessing functions for easier understanding~~
+    1. ~~change Avogadro constant to 0.6022... to simplify conversion~~
+    1. ~~rename GOOD_EXP to NU for math~~
