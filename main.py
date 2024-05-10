@@ -3,6 +3,7 @@ from typing import Annotated
 
 from fastapi import FastAPI, Form, UploadFile
 from fastapi.responses import StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 from polysoleval.logging import get_logger, setup_logger
 
 from polysoleval.models import *
@@ -57,6 +58,19 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
+origins = [
+    "http://localhost",
+    "http://localhost:5173",
+    "http://172.18.0.1",
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get("/", status_code=200)
