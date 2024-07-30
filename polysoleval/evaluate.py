@@ -166,7 +166,11 @@ async def evaluate_dataset(
         axis=1,
     )  # Nx11 array
     if np.any(np.isnan(arr)):
-        warnings = warn("Found invalid values, likely divided by zero", log, warnings)
+        warnings = warn(
+            "Found invalid values, likely divided by zero",
+            log,
+            warnings,
+        )
 
     inds = np.lexsort((reduced_conc, degree_polym))
     arr = arr[inds]
@@ -178,7 +182,9 @@ async def evaluate_dataset(
     ):
         if pe.value == 1.0:
             warnings = warn(
-                f"Fitting could not be completed for the case of {name}.", log, warnings
+                f"Fitting could not be completed for the case of {name}.",
+                log,
+                warnings,
             )
 
     return Results(bg, bth, pe_combo, pe_bg, pe_bth, arr, warnings)

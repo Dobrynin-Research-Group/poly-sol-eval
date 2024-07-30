@@ -26,6 +26,7 @@ async def lifespan(app: FastAPI):
         m.name: m
         for m in NeuralNetType.all_from_yaml(NEURALNETPATH / "model_types.yaml")
     }
+    log.debug(f"{NEURALNET_TYPES = }")
 
     # load ML models
     for bg_net_path in NEURALNETPATH.glob("*-Bg.pt"):
@@ -48,6 +49,7 @@ async def lifespan(app: FastAPI):
             bg_net_path=bg_net_path,
             bth_net_path=bth_net_path,
         )
+    log.debug(f"{NEURALNET_PAIRS = }")
 
     yield
 
@@ -85,7 +87,9 @@ def get_models() -> responses.NeuralNetTypes:
     Returns:
         _type_: _description_
     """
-    return responses.NeuralNetTypes(neuralnet_types=list(NEURALNET_TYPES.values()))
+    resp = responses.NeuralNetTypes(neuralnet_types=list(NEURALNET_TYPES.values()))
+    get_logger().debug(f"request for `/models` returned: {resp.model_dump_json()}")
+    return resp
 
 
 @app.get("/models/{neuralnet_name}")

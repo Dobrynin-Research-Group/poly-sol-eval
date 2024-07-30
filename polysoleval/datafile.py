@@ -69,7 +69,7 @@ class DatafileHandler:
         self._log = get_logger()
 
     def write_file(self, arr: npt.NDArray) -> str:
-        self._log.debug(f"DatafileHanler.write_file({arr = })")
+        self._log.debug(f"DatafileHandler.write_file({arr = })")
 
         b = BytesIO()
         np.savetxt(
@@ -83,6 +83,7 @@ class DatafileHandler:
         )
         uuid = uuid1()
         file_string = b.getvalue().decode()
+        self._log.debug(f"File data:\n{file_string}")
 
         # with open("sample_file.csv", "w") as csv:
         #     csv.write(file_string)
@@ -97,7 +98,7 @@ class DatafileHandler:
         return str(uuid)
 
     def check_delete(self) -> None:
-        self._log.debug("DatafileHanler.check_delete()")
+        self._log.debug("DatafileHandler.check_delete()")
 
         now = time()
         for uuid in self._cache:
